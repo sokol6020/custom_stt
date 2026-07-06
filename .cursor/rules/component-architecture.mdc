@@ -1,0 +1,38 @@
+---
+description: Компонентный подход в WPF-проекте customSTT
+globs: customSTT/**/*.{xaml,cs}
+alwaysApply: false
+---
+
+# Компонентная архитектура customSTT
+
+## UI (WPF)
+
+- Разбивай экраны на **UserControl** в `Components/` — один компонент = одна зона ответственности.
+- Общие стили, цвета и шаблоны — только в `Themes/AppTheme.xaml`, не дублируй в окнах.
+- Окна (`MainWindow`, `HistoryWindow`) — тонкая оболочка: компоновка + code-behind для HWND/хоткеев.
+- Компоненты получают данные через **DataContext** родителя (MVVM), без code-behind с бизнес-логикой.
+- Переиспользуемые блоки (карточка, строка настройки) — отдельные мини-компоненты в `Components/Common/`.
+
+```xml
+<!-- ✅ GOOD: окно только компонует -->
+<components:RecordingHeaderView Grid.Row="0"/>
+<components:SettingsPanelView />
+```
+
+```xml
+<!-- ❌ BAD: 400+ строк разметки и стилей в одном Window -->
+```
+
+## Логика
+
+- **ViewModel** — состояние UI и команды; без прямого доступа к файлам (используй сервисы).
+- **Services** — одна ответственность: `AudioCaptureService`, `HotkeyService`, `SettingsService` и т.д.
+- Зависимости передаются через конструктор (composition root в `App.xaml.cs`).
+- Не создавай сервисы внутри ViewModel (`new TranscriptionHistoryService()` в окне — плохо).
+
+## Именование
+
+- Компоненты: `{Feature}PanelView`, `{Feature}HeaderView`
+- Сервисы: `{Domain}Service`
+- ViewModels: `{Screen}ViewModel`

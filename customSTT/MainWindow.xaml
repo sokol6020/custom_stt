@@ -1,0 +1,41 @@
+﻿<Window x:Class="customSTT.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:components="clr-namespace:customSTT.Components"
+        Title="Speech to Text"
+        SizeToContent="WidthAndHeight"
+        MinWidth="440"
+        MaxWidth="680"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize"
+        Background="{StaticResource BgPrimaryBrush}"
+        Foreground="{StaticResource TextPrimaryBrush}"
+        FontFamily="{StaticResource AppFont}">
+
+    <Grid Margin="20" MinWidth="400">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <components:RecordingHeaderView Grid.Row="0" Margin="0,0,0,16"/>
+
+        <Border Grid.Row="1"
+                Style="{StaticResource CardBorderStyle}"
+                Padding="12,8,12,12"
+                MinWidth="400"
+                HorizontalAlignment="Stretch">
+            <TabControl HorizontalAlignment="Stretch">
+                <TabItem Header="FAQ" Style="{StaticResource TabStyle}">
+                    <components:FaqPanelView Margin="0,12,0,0"/>
+                </TabItem>
+                <TabItem Header="История" Style="{StaticResource TabStyle}">
+                    <components:HistoryPanelView Margin="0,12,0,0"/>
+                </TabItem>
+                <TabItem Header="Настройки" Style="{StaticResource TabStyle}">
+                    <components:SettingsPanelView Margin="0,12,0,0"/>
+                </TabItem>
+            </TabControl>
+        </Border>
+    </Grid>
+</Window>

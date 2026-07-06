@@ -1,0 +1,34 @@
+# Build outputs
+[Bb]in/
+[Oo]bj/
+publish/
+
+# Local NuGet cache / vendored packages
+packages/
+
+# Whisper models (downloaded at runtime)
+whisper-models/
+**/whisper-models/
+
+# User data
+**/Data/appsettings.json
+**/Data/transcription_history.json
+
+# IDE
+.idea/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs and temp
+*.log
+*.tmp
+*~

@@ -1,0 +1,137 @@
+<UserControl x:Class="customSTT.Components.SettingsPanelView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             HorizontalAlignment="Stretch"
+             FontFamily="{StaticResource AppFont}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="4">
+        <StackPanel>
+            <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Распознавание" Style="{StaticResource SectionTitleStyle}"/>
+                    <TextBlock Text="Модель" Style="{StaticResource LabelStyle}" Margin="0,0,0,6"/>
+                    <ComboBox ItemsSource="{Binding AvailableModels}"
+                              SelectedIndex="{Binding SelectedModelIndex}"
+                              Style="{StaticResource ComboBoxStyle}"
+                              Margin="0,0,0,14">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Foreground="{StaticResource TextPrimaryBrush}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Text="Язык" Style="{StaticResource LabelStyle}" Margin="0,0,0,6"/>
+                    <ComboBox ItemsSource="{Binding AvailableLanguages}"
+                              SelectedIndex="{Binding SelectedLanguageIndex}"
+                              Style="{StaticResource ComboBoxStyle}"
+                              Margin="0,0,0,14">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Foreground="{StaticResource TextPrimaryBrush}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Text="Микрофон" Style="{StaticResource LabelStyle}" Margin="0,0,0,6"/>
+                    <ComboBox ItemsSource="{Binding AudioDevices}"
+                              SelectedItem="{Binding SelectedAudioDevice}"
+                              Style="{StaticResource ComboBoxStyle}"
+                              Margin="0,0,0,14">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <CheckBox Content="GPU-ускорение распознавания"
+                              IsChecked="{Binding UseGpu}"
+                              Style="{StaticResource CheckBoxStyle}"
+                              ToolTip="NVIDIA: CUDA. AMD/Intel: Vulkan. При недоступности GPU используется CPU."/>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Горячие клавиши" Style="{StaticResource SectionTitleStyle}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="Запись"
+                                   Style="{StaticResource LabelStyle}"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,12,0"/>
+                        <Border Grid.Column="1"
+                                Style="{StaticResource HotkeyBadgeStyle}"
+                                HorizontalAlignment="Stretch"
+                                Margin="0,0,10,0">
+                            <TextBlock Text="{Binding HotkeyDisplay}"
+                                       Foreground="{StaticResource AccentBrush}"
+                                       FontWeight="SemiBold"
+                                       FontSize="14"
+                                       HorizontalAlignment="Center"/>
+                        </Border>
+                        <Button Grid.Column="2"
+                                Content="Изменить"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Command="{Binding ChangeHotkeyCommand}"/>
+                    </Grid>
+
+                    <TextBlock Text="Режим записи"
+                               Style="{StaticResource LabelStyle}"
+                               Margin="0,14,0,6"/>
+                    <ComboBox ItemsSource="{Binding AvailableHotkeyModes}"
+                              SelectedIndex="{Binding HotkeyModeIndex}"
+                              Style="{StaticResource ComboBoxStyle}"
+                              Margin="0,0,0,4">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Foreground="{StaticResource TextPrimaryBrush}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+
+                    <Border Background="{StaticResource BgSecondaryBrush}"
+                            BorderBrush="{StaticResource AccentBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="16"
+                            Margin="0,14,0,0"
+                            Visibility="{Binding IsCapturingHotkey, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="Нажмите клавишу или комбинацию..."
+                                       Foreground="{StaticResource AccentBrush}"
+                                       FontWeight="SemiBold"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,0,0,8"/>
+                            <TextBlock Text="{Binding HotkeyInputText}"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontSize="18"
+                                       FontWeight="Bold"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,0,0,12"/>
+                            <Button Content="Отмена"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    Command="{Binding StopCaptureHotkeyCommand}"
+                                    HorizontalAlignment="Center"
+                                    MinWidth="100"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel>
+                    <TextBlock Text="Поведение" Style="{StaticResource SectionTitleStyle}"/>
+                    <CheckBox Content="Автозапуск при старте Windows"
+                              IsChecked="{Binding AutoStart}"
+                              Style="{StaticResource CheckBoxStyle}"/>
+                    <CheckBox Content="Минимизация в трей при закрытии"
+                              IsChecked="{Binding MinimizedToTray}"
+                              Style="{StaticResource CheckBoxStyle}"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
