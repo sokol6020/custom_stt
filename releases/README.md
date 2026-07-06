@@ -1,6 +1,8 @@
 # Releases
 
-Локальные сборки релизов (exe, zip) **не хранятся в git** — они появляются после:
+Локальные сборки (exe, zip) **не хранятся в git** — только эта инструкция.
+
+## Локально
 
 ```bat
 create-release.bat 1.3.0
@@ -10,16 +12,22 @@ create-release.bat 1.3.0
 
 ## GitHub Releases
 
-Публичные релизы публикуются автоматически при push тега `v*`:
+Страница [Releases](https://github.com/sokol6020/custom_stt/releases) заполняется одним из способов:
+
+### 1. Токен (рекомендуется, сразу после локальной сборки)
 
 ```bat
+set GITHUB_TOKEN=ghp_ваш_токен
 create-release.bat 1.3.0
 ```
 
-Скрипт создаёт локальную папку, затем тег `v1.3.0` и отправляет его на GitHub.  
-Workflow `.github/workflows/release.yml` собирает приложение и прикрепляет `customSTT.exe` и zip-архив к [GitHub Releases](https://github.com/sokol6020/custom_stt/releases).
+Скрипт загрузит `customSTT.exe` и zip в GitHub Releases.
 
-Если тег уже существует и нужна пересборка:
+### 2. GitHub Actions (тег)
+
+Если `GITHUB_TOKEN` не задан, `create-release.bat` отправляет тег `v1.3.0` — CI собирает и публикует релиз.
+
+Пересборка существующего тега:
 
 ```bat
 git tag -d v1.3.0

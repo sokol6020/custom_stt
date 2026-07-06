@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 1.3.0)'
+        required: true
 
 permissions:
   contents: write
@@ -19,7 +24,13 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '10.0.100'
+
+      - name: Show .NET SDK
+        shell: pwsh
+        run: |
+          dotnet --version
+          dotnet --info
 
       - name: Publish app
         shell: pwsh
@@ -36,10 +47,21 @@ jobs:
             -p:DebugSymbols=false `
             --output ./publish
 
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq 'workflow_dispatch') {
+            $v = "${{ github.event.inputs.version }}".TrimStart('v')
+          } else {
+            $v = "$env:GITHUB_REF_NAME".TrimStart('v')
+          }
+          "value=$v" >> $env:GITHUB_OUTPUT
+
       - name: Package release
         shell: pwsh
         run: |
-          $version = "$env:GITHUB_REF_NAME".TrimStart('v')
+          $version = "${{ steps.version.outputs.value }}"
           $releaseDir = "releases/v$version"
           $notesFile = "release-notes/$version.txt"
           if (-not (Test-Path $notesFile)) {
@@ -54,10 +76,10 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: customSTT ${{ github.ref_name }}
-          body_path: releases/${{ github.ref_name }}/RELEASE_NOTES.txt
+          tag_name: v${{ steps.version.outputs.value }}
+          name: customSTT v${{ steps.version.outputs.value }}
+          body_path: releases/v${{ steps.version.outputs.value }}/RELEASE_NOTES.txt
           files: |
-            releases/${{ github.ref_name }}/customSTT.exe
-            releases/${{ github.ref_name }}/customSTT-*.zip
+            releases/v${{ steps.version.outputs.value }}/customSTT.exe
+            releases/v${{ steps.version.outputs.value }}/customSTT-*.zip
           fail_on_unmatched_files: true

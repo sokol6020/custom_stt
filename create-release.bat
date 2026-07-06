@@ -94,6 +94,17 @@ echo   BUILD_INFO.txt
 echo.
 
 set "GIT_TAG=v%VERSION%"
+if defined GITHUB_TOKEN (
+    echo Публикация на GitHub Releases через GITHUB_TOKEN...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\publish-github-release.ps1" -Version "%VERSION%"
+    if %errorlevel% neq 0 (
+        echo ОШИБКА публикации на GitHub
+        pause
+        exit /b %errorlevel%
+    )
+    goto release_done
+)
+
 echo Публикация на GitHub Releases (тег %GIT_TAG%)...
 git rev-parse --is-inside-work-tree >nul 2>&1
 if %errorlevel% neq 0 (
