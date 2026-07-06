@@ -13,6 +13,7 @@ $content = $content -replace '<Version>[^<]+</Version>', "<Version>$Version</Ver
 $content = $content -replace '<AssemblyVersion>[^<]+</AssemblyVersion>', "<AssemblyVersion>$assemblyVersion</AssemblyVersion>"
 $content = $content -replace '<FileVersion>[^<]+</FileVersion>', "<FileVersion>$assemblyVersion</FileVersion>"
 
-Set-Content -LiteralPath $ProjectPath -Value $content -NoNewline
+$utf8Bom = New-Object System.Text.UTF8Encoding $true
+[System.IO.File]::WriteAllText($ProjectPath, $content, $utf8Bom)
 
 Write-Host "Version updated to $Version ($assemblyVersion)"
