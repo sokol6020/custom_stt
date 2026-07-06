@@ -2,7 +2,7 @@
 
 Desktop speech-to-text app for Windows. Records microphone audio, transcribes it locally with [Whisper.NET](https://github.com/sandrohanea/whisper.net), and inserts the result into the active text field.
 
-**Version:** 1.1.0  
+**Version:** 1.3.0  
 **Stack:** .NET 10, WPF, NAudio, Whisper.NET
 
 ---
@@ -54,6 +54,16 @@ dotnet run --project customSTT\customSTT.csproj
 
 > Prefer `run.bat` or the `.exe` so the correct app icon appears in the taskbar (not `dotnet.exe`).
 
+Start hidden in the system tray:
+
+```bat
+publish\customSTT.exe --minimize-to-tray
+```
+
+Or enable **Hide in tray on startup** in Settings → Behavior.
+
+Aliases: `--tray`, `--minimized`, `/minimize-to-tray`.
+
 ### Production build
 
 Creates a self-contained `win-x64` build in the `publish\` folder:
@@ -68,7 +78,39 @@ Run:
 publish\customSTT.exe
 ```
 
+> Always run the app from `publish\` after `build-prod.bat`.  
+> `run.bat` starts **Debug** from `bin\Debug\...` — it is not the production build.  
+> Old copies in `releases\` are not updated automatically.
+
 On first run, the selected Whisper model is downloaded into `whisper-models\` next to the executable.
+
+### Release package
+
+Create a versioned release folder with `customSTT.exe`, a full app zip, and release notes:
+
+```bat
+create-release.bat 1.2.0
+```
+
+Or with inline notes:
+
+```bat
+create-release.bat 1.2.0 "Hold-to-talk hotkey, GPU Vulkan/CUDA, UI fixes"
+```
+
+You can also prepare notes in `release-notes\1.2.0.txt` before running the script.
+
+Output:
+
+```
+releases\v1.2.0\
+  customSTT.exe                  # application executable
+  customSTT-1.2.0-win-x64.zip    # full self-contained app archive
+  RELEASE_NOTES.txt
+  BUILD_INFO.txt
+```
+
+`build-prod.bat` always performs a clean rebuild (`dotnet clean`, wipes `publish\`) so the output is not stale.
 
 ### Default shortcuts
 
@@ -94,6 +136,10 @@ customSTT/
 ---
 
 ## Русский
+
+Настольное приложение для преобразования речи в текст для Windows. Записывает звук с микрофона, расшифровывает его локально с помощью Whisper.NET и вставляет результат в активное текстовое поле.
+
+Стек: .NET 10, WPF, NAudio, Whisper.NET
 
 ### Возможности
 
@@ -140,6 +186,16 @@ dotnet run --project customSTT\customSTT.csproj
 
 > Лучше использовать `run.bat` или `.exe`, чтобы в панели задач была иконка приложения, а не `dotnet.exe`.
 
+Запуск сразу в трей (окно не показывается):
+
+```bat
+publish\customSTT.exe --minimize-to-tray
+```
+
+Или включите **Скрывать в трей при запуске** в Настройки → Поведение.
+
+Также: `--tray`, `--minimized`, `/minimize-to-tray`.
+
 ### Продакшен-сборка
 
 Самодостаточная сборка `win-x64` в папку `publish\`:
@@ -154,7 +210,39 @@ build-prod.bat
 publish\customSTT.exe
 ```
 
+> После `build-prod.bat` запускайте только `publish\customSTT.exe`.  
+> `run.bat` собирает и запускает **Debug** из `bin\Debug\...` — это не prod-сборка.  
+> Старые копии в `releases\` сами не обновляются.
+
 При первом запуске выбранная модель Whisper скачивается в `whisper-models\` рядом с исполняемым файлом.
+
+### Релиз
+
+Создание релиза с `customSTT.exe`, zip-архивом и описанием изменений:
+
+```bat
+create-release.bat 1.2.0
+```
+
+Или с текстом изменений в командной строке:
+
+```bat
+create-release.bat 1.2.0 "Режим удержания hotkey, GPU Vulkan/CUDA, исправления UI"
+```
+
+Можно заранее положить заметки в `release-notes\1.2.0.txt`.
+
+Результат:
+
+```
+releases\v1.2.0\
+  customSTT.exe
+  customSTT-1.2.0-win-x64.zip
+  RELEASE_NOTES.txt
+  BUILD_INFO.txt
+```
+
+`build-prod.bat` всегда делает чистую пересборку (`dotnet clean`, очистка `publish\`), чтобы не попадала старая версия.
 
 ### Горячие клавиши по умолчанию
 

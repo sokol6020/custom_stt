@@ -62,6 +62,12 @@ public class AppSettings
     public bool MinimizedToTray { get; set; } = true;
 
     /// <summary>
+    /// Скрывать окно в трей при запуске приложения
+    /// </summary>
+    [JsonPropertyName("minimizeToTrayOnStartup")]
+    public bool MinimizeToTrayOnStartup { get; set; }
+
+    /// <summary>
     /// История транскрипций (последние N записей)
     /// </summary>
     [JsonPropertyName("historyLimit")]

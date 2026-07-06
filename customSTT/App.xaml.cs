@@ -28,6 +28,8 @@ public partial class App : Application
 
     protected void OnStartup(object sender, StartupEventArgs e)
     {
+        StartupOptions.Parse(e.Args);
+
         _overlayService.Initialize();
         _trayIconService.Initialize();
 

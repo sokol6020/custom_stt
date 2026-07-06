@@ -1,12 +1,13 @@
 @echo off
-echo === Building customSTT ===
+chcp 65001 >nul
+echo === customSTT: сборка Debug ===
 dotnet build "customSTT.sln" --configuration Debug
 if %errorlevel% neq 0 (
     echo.
-    echo === BUILD FAILED ===
+    echo === ОШИБКА СБОРКИ ===
     pause
     exit /b %errorlevel%
 )
 echo.
-echo === BUILD SUCCESS ===
+echo === СБОРКА УСПЕШНА ===
 pause

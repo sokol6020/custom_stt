@@ -110,6 +110,9 @@ public partial class MainViewModel : ObservableObject
     private bool _minimizedToTray = true;
 
     [ObservableProperty]
+    private bool _minimizeToTrayOnStartup;
+
+    [ObservableProperty]
     private bool _useGpu = true;
 
     [ObservableProperty]
@@ -232,6 +235,11 @@ public partial class MainViewModel : ObservableObject
     }
 
     partial void OnMinimizedToTrayChanged(bool value)
+    {
+        SaveSettings();
+    }
+
+    partial void OnMinimizeToTrayOnStartupChanged(bool value)
     {
         SaveSettings();
     }
@@ -582,6 +590,7 @@ public partial class MainViewModel : ObservableObject
             HotkeyModeIndex = string.Equals(Settings.HotkeyMode, "hold", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
             AutoStart = Settings.AutoStart;
             MinimizedToTray = Settings.MinimizedToTray;
+            MinimizeToTrayOnStartup = Settings.MinimizeToTrayOnStartup;
             UseGpu = Settings.UseGpu;
             HistoryLimit = Settings.HistoryLimit;
             OutputFormat = Settings.OutputFormat ?? "plainText";
@@ -699,6 +708,7 @@ public partial class MainViewModel : ObservableObject
             Settings.AudioDeviceIndex = _audioCaptureService.FindDeviceIndexByName(SelectedAudioDevice);
             Settings.AutoStart = AutoStart;
             Settings.MinimizedToTray = MinimizedToTray;
+            Settings.MinimizeToTrayOnStartup = MinimizeToTrayOnStartup;
             Settings.UseGpu = UseGpu;
             Settings.HistoryLimit = HistoryLimit;
             Settings.OutputFormat = OutputFormat;

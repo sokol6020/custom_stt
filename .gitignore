@@ -2,6 +2,7 @@
 [Bb]in/
 [Oo]bj/
 publish/
+releases/
 
 # Local NuGet cache / vendored packages
 packages/

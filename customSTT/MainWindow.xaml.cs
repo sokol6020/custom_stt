@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using customSTT.Models;
 using customSTT.Services;
 using customSTT.ViewModels;
 
@@ -54,6 +55,15 @@ public partial class MainWindow : Window
         _hotkeyService.HotkeyDeactivated += OnHotkeyDeactivated;
         _hotkeyService.OverlayHotkeyActivated += OnOverlayHotkeyActivated;
         Closing += MainWindow_Closing;
+        Loaded += OnMainWindowLoaded;
+    }
+
+    private void OnMainWindowLoaded(object? sender, RoutedEventArgs e)
+    {
+        Loaded -= OnMainWindowLoaded;
+
+        if (StartupOptions.MinimizeToTrayOnStartup || _viewModel.MinimizeToTrayOnStartup)
+            _trayIconService.Minimize();
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -98,7 +108,7 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            if (_viewModel.IsHotkeyHoldMode)
+            if (_hotkeyService.RecordingMode == RecordingHotkeyMode.Hold)
             {
                 if (!_viewModel.IsRecording && !_viewModel.IsProcessing)
                 {
@@ -119,7 +129,7 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            if (_viewModel.IsHotkeyHoldMode && _viewModel.IsRecording)
+            if (_hotkeyService.RecordingMode == RecordingHotkeyMode.Hold && _viewModel.IsRecording)
                 _viewModel.StopRecordingCommand.Execute(null);
         });
     }

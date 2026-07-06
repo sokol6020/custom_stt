@@ -1,12 +1,9 @@
 using System;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Input;
 using customSTT.Models;
 
 namespace customSTT.Services;
-
-public delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
 public class HotkeyService : IDisposable
 {
@@ -14,11 +11,7 @@ public class HotkeyService : IDisposable
     public const int OverlayHotkeyId = 9001;
     public const int HotkeyId = RecordingHotkeyId;
 
-    private const int WhKeyboardLl = 13;
-    private const int WmKeydown = 0x0100;
-    private const int WmKeyup = 0x0101;
-    private const int WmSyskeydown = 0x0104;
-    private const int WmSyskeyup = 0x0105;
+    private const int HoldPollIntervalMs = 10;
 
     private IntPtr _windowHandle;
     private bool _recordingRegistered;
@@ -29,9 +22,9 @@ public class HotkeyService : IDisposable
     private RecordingHotkeyMode _recordingMode = RecordingHotkeyMode.Toggle;
     private ModifierKeys _holdModifiers = ModifierKeys.None;
     private int _holdVirtualKey;
-    private bool _holdKeyActive;
-    private IntPtr _keyboardHook = IntPtr.Zero;
-    private LowLevelKeyboardProc? _keyboardHookProc;
+    private volatile bool _holdKeyActive;
+    private volatile bool _holdPollingActive;
+    private Thread? _holdPollThread;
 
     public event Action? HotkeyActivated;
     public event Action? HotkeyDeactivated;
@@ -82,16 +75,8 @@ public class HotkeyService : IDisposable
         _holdKeyActive = false;
         _registeredHotkey = hotkey;
         _recordingRegistered = true;
-
-        if (!InstallKeyboardHook())
-        {
-            _recordingRegistered = false;
-            _registeredHotkey = string.Empty;
-            System.Diagnostics.Trace.WriteLine($"HotkeyService: failed to install keyboard hook for '{hotkey}'");
-            return false;
-        }
-
-        System.Diagnostics.Trace.WriteLine($"Hold hotkey registered: {hotkey}");
+        StartHoldPolling();
+        System.Diagnostics.Trace.WriteLine($"Hold hotkey registered (polling): {hotkey}");
         return true;
     }
 
@@ -111,7 +96,7 @@ public class HotkeyService : IDisposable
 
         if (!result)
         {
-            int error = Marshal.GetLastWin32Error();
+            int error = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
             System.Diagnostics.Trace.WriteLine(
                 $"RegisterHotKey failed: error={error}, hotkey={hotkey}, id={id}, vk=0x{virtualKey:X}, mods={GetModifierFlags(modifiers)}");
             return false;
@@ -125,16 +110,13 @@ public class HotkeyService : IDisposable
 
     public void UnregisterHotkeys()
     {
-        RemoveKeyboardHook();
+        StopHoldPolling();
         _holdKeyActive = false;
 
         if (_windowHandle != IntPtr.Zero)
         {
-            if (_recordingRegistered)
-                HotkeyWin32.UnregisterHotKey(_windowHandle, RecordingHotkeyId);
-
-            if (_overlayRegistered)
-                HotkeyWin32.UnregisterHotKey(_windowHandle, OverlayHotkeyId);
+            HotkeyWin32.UnregisterHotKey(_windowHandle, RecordingHotkeyId);
+            HotkeyWin32.UnregisterHotKey(_windowHandle, OverlayHotkeyId);
         }
 
         _recordingRegistered = false;
@@ -157,114 +139,83 @@ public class HotkeyService : IDisposable
         }
     }
 
-    private bool InstallKeyboardHook()
+    private void StartHoldPolling()
     {
-        if (_keyboardHook != IntPtr.Zero)
-            return true;
-
-        _keyboardHookProc = KeyboardHookCallback;
-
-        var moduleName = Process.GetCurrentProcess().MainModule?.ModuleName;
-        _keyboardHook = HotkeyWin32.SetWindowsHookEx(
-            WhKeyboardLl,
-            _keyboardHookProc,
-            HotkeyWin32.GetModuleHandle(moduleName),
-            0);
-
-        if (_keyboardHook == IntPtr.Zero)
+        StopHoldPolling();
+        _holdPollingActive = true;
+        _holdPollThread = new Thread(HoldPollLoop)
         {
-            _keyboardHook = HotkeyWin32.SetWindowsHookEx(
-                WhKeyboardLl,
-                _keyboardHookProc,
-                HotkeyWin32.GetModuleHandle(null),
-                0);
-        }
-
-        if (_keyboardHook == IntPtr.Zero)
-        {
-            int error = Marshal.GetLastWin32Error();
-            System.Diagnostics.Trace.WriteLine($"SetWindowsHookEx failed: error={error}");
-            _keyboardHookProc = null;
-            return false;
-        }
-
-        return true;
-    }
-
-    private void RemoveKeyboardHook()
-    {
-        if (_keyboardHook == IntPtr.Zero)
-            return;
-
-        HotkeyWin32.UnhookWindowsHookEx(_keyboardHook);
-        _keyboardHook = IntPtr.Zero;
-        _keyboardHookProc = null;
-    }
-
-    private IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
-    {
-        if (nCode >= 0 && _recordingMode == RecordingHotkeyMode.Hold && _recordingRegistered)
-        {
-            var hookStruct = Marshal.PtrToStructure<KbdLlHookStruct>(lParam);
-            int message = wParam.ToInt32();
-
-            if (message is WmKeydown or WmSyskeydown or WmKeyup or WmSyskeyup)
-                ProcessHoldHotkey(hookStruct.vkCode);
-        }
-
-        return HotkeyWin32.CallNextHookEx(_keyboardHook, nCode, wParam, lParam);
-    }
-
-    private void ProcessHoldHotkey(uint vkCode)
-    {
-        if (!IsRelevantHoldKey(vkCode))
-            return;
-
-        bool chordDown = IsRecordingChordDown();
-
-        if (chordDown && !_holdKeyActive)
-        {
-            _holdKeyActive = true;
-            HotkeyActivated?.Invoke();
-        }
-        else if (!chordDown && _holdKeyActive)
-        {
-            _holdKeyActive = false;
-            HotkeyDeactivated?.Invoke();
-        }
-    }
-
-    private bool IsRelevantHoldKey(uint vkCode)
-    {
-        if (vkCode == _holdVirtualKey)
-            return true;
-
-        return vkCode switch
-        {
-            0x10 or 0x11 or 0x12 or 0xA0 or 0xA1 or 0xA2 or 0xA3 or 0xA4 or 0xA5 => true,
-            _ => false
+            IsBackground = true,
+            Name = "RecordingHotkeyHoldPoll"
         };
+        _holdPollThread.Start();
+    }
+
+    private void StopHoldPolling()
+    {
+        _holdPollingActive = false;
+        var thread = _holdPollThread;
+        if (thread is { IsAlive: true })
+            thread.Join(500);
+        _holdPollThread = null;
+    }
+
+    private void HoldPollLoop()
+    {
+        while (_holdPollingActive)
+        {
+            try
+            {
+                bool chordDown = IsRecordingChordDown();
+
+                if (chordDown && !_holdKeyActive)
+                {
+                    _holdKeyActive = true;
+                    HotkeyActivated?.Invoke();
+                }
+                else if (!chordDown && _holdKeyActive)
+                {
+                    _holdKeyActive = false;
+                    HotkeyDeactivated?.Invoke();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.WriteLine($"Hold poll error: {ex.Message}");
+            }
+
+            Thread.Sleep(HoldPollIntervalMs);
+        }
     }
 
     private bool IsRecordingChordDown()
     {
-        if ((HotkeyWin32.GetAsyncKeyState(_holdVirtualKey) & 0x8000) == 0)
+        if (!IsVirtualKeyDown(_holdVirtualKey))
             return false;
 
-        if ((_holdModifiers & ModifierKeys.Control) != 0 &&
-            (HotkeyWin32.GetAsyncKeyState(0x11) & 0x8000) == 0)
+        if ((_holdModifiers & ModifierKeys.Control) != 0 && !IsControlDown())
             return false;
 
-        if ((_holdModifiers & ModifierKeys.Alt) != 0 &&
-            (HotkeyWin32.GetAsyncKeyState(0x12) & 0x8000) == 0)
+        if ((_holdModifiers & ModifierKeys.Alt) != 0 && !IsAltDown())
             return false;
 
-        if ((_holdModifiers & ModifierKeys.Shift) != 0 &&
-            (HotkeyWin32.GetAsyncKeyState(0x10) & 0x8000) == 0)
+        if ((_holdModifiers & ModifierKeys.Shift) != 0 && !IsShiftDown())
             return false;
 
         return true;
     }
+
+    private static bool IsVirtualKeyDown(int virtualKey) =>
+        (HotkeyWin32.GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+
+    private static bool IsControlDown() =>
+        IsVirtualKeyDown(0x11) || IsVirtualKeyDown(0xA2) || IsVirtualKeyDown(0xA3);
+
+    private static bool IsAltDown() =>
+        IsVirtualKeyDown(0x12) || IsVirtualKeyDown(0xA4) || IsVirtualKeyDown(0xA5);
+
+    private static bool IsShiftDown() =>
+        IsVirtualKeyDown(0x10) || IsVirtualKeyDown(0xA0) || IsVirtualKeyDown(0xA1);
 
     public static bool TryParseHotkey(string hotkey, out ModifierKeys modifiers, out int virtualKey)
     {
@@ -407,38 +358,16 @@ public class HotkeyService : IDisposable
         UnregisterHotkeys();
         GC.SuppressFinalize(this);
     }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct KbdLlHookStruct
-    {
-        public uint vkCode;
-        public uint scanCode;
-        public uint flags;
-        public uint time;
-        public IntPtr dwExtraInfo;
-    }
 }
 
 internal static class HotkeyWin32
 {
-    [DllImport("user32.dll", SetLastError = true)]
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
     public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
 
-    [DllImport("user32.dll", SetLastError = true)]
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
     public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern bool UnhookWindowsHookEx(IntPtr hhk);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern IntPtr GetModuleHandle(string? lpModuleName);
-
-    [DllImport("user32.dll")]
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int vKey);
 }
