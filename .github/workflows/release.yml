@@ -21,9 +21,20 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Build production
+      - name: Publish app
         shell: pwsh
-        run: ./scripts/build-prod.ps1 -NoPause
+        run: |
+          dotnet restore ./customSTT/customSTT.csproj --runtime win-x64
+          dotnet publish ./customSTT/customSTT.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --no-restore `
+            -p:ContinuousIntegrationBuild=true `
+            -p:PublishReadyToRun=false `
+            -p:DebugType=none `
+            -p:DebugSymbols=false `
+            --output ./publish
 
       - name: Package release
         shell: pwsh
