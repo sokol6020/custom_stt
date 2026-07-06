@@ -92,4 +92,35 @@ echo   customSTT-%VERSION%-win-x64.zip
 echo   RELEASE_NOTES.txt
 echo   BUILD_INFO.txt
 echo.
+
+set "GIT_TAG=v%VERSION%"
+echo Публикация на GitHub Releases (тег %GIT_TAG%)...
+git rev-parse --is-inside-work-tree >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ПРЕДУПРЕЖДЕНИЕ: не git-репозиторий, тег не создан.
+    goto release_done
+)
+
+git diff --quiet
+if %errorlevel% neq 0 (
+    echo ПРЕДУПРЕЖДЕНИЕ: есть незакоммиченные изменения. Закоммитьте перед тегом.
+    goto release_done
+)
+
+git tag -a "%GIT_TAG%" -m "Release %VERSION%" 2>nul
+if %errorlevel% neq 0 (
+    echo Тег %GIT_TAG% уже существует локально, обновляю...
+    git tag -fa "%GIT_TAG%" -m "Release %VERSION%"
+)
+
+git push origin "%GIT_TAG%"
+if %errorlevel% neq 0 (
+    echo ПРЕДУПРЕЖДЕНИЕ: не удалось отправить тег. Проверьте git push и повторите:
+    echo   git push origin %GIT_TAG%
+) else (
+    echo Тег отправлен. GitHub Actions соберёт релиз с exe и zip.
+)
+
+:release_done
+echo.
 pause

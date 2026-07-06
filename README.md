@@ -100,15 +100,17 @@ create-release.bat 1.2.0 "Hold-to-talk hotkey, GPU Vulkan/CUDA, UI fixes"
 
 You can also prepare notes in `release-notes\1.2.0.txt` before running the script.
 
-Output:
+Output (local, not in git):
 
 ```
-releases\v1.2.0\
-  customSTT.exe                  # application executable
-  customSTT-1.2.0-win-x64.zip    # full self-contained app archive
+releases\v1.3.0\
+  customSTT.exe
+  customSTT-1.3.0-win-x64.zip
   RELEASE_NOTES.txt
   BUILD_INFO.txt
 ```
+
+The script also pushes tag `v1.3.0` to GitHub. **GitHub Actions** builds and publishes assets to [Releases](https://github.com/sokol6020/custom_stt/releases).
 
 `build-prod.bat` always performs a clean rebuild (`dotnet clean`, wipes `publish\`) so the output is not stale.
 
@@ -232,15 +234,17 @@ create-release.bat 1.2.0 "Режим удержания hotkey, GPU Vulkan/CUDA,
 
 Можно заранее положить заметки в `release-notes\1.2.0.txt`.
 
-Результат:
+Результат (локально, не в git):
 
 ```
-releases\v1.2.0\
+releases\v1.3.0\
   customSTT.exe
-  customSTT-1.2.0-win-x64.zip
+  customSTT-1.3.0-win-x64.zip
   RELEASE_NOTES.txt
   BUILD_INFO.txt
 ```
+
+Скрипт также отправляет тег `v1.3.0` на GitHub. **GitHub Actions** собирает и публикует файлы в [Releases](https://github.com/sokol6020/custom_stt/releases).
 
 `build-prod.bat` всегда делает чистую пересборку (`dotnet clean`, очистка `publish\`), чтобы не попадала старая версия.
 
