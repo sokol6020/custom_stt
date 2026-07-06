@@ -22,8 +22,8 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Build production
-        shell: cmd
-        run: build-prod.bat nopause
+        shell: pwsh
+        run: ./scripts/build-prod.ps1 -NoPause
 
       - name: Package release
         shell: pwsh
