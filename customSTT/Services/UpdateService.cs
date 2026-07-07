@@ -148,13 +148,14 @@ public class UpdateService : IDisposable
         var script = BuildUpdaterScript(pid, extractDir, appDir, exePath, updateRoot);
         File.WriteAllText(scriptPath, script, new UTF8Encoding(false));
 
+        // UseShellExecute=true запускает процесс полностью независимо от текущего,
+        // чтобы он пережил завершение приложения. Окно скрыто.
         var startInfo = new ProcessStartInfo
         {
-            FileName = "cmd.exe",
-            Arguments = $"/c \"\"{scriptPath}\"\"",
+            FileName = scriptPath,
             WorkingDirectory = updateRoot,
-            CreateNoWindow = true,
-            UseShellExecute = false
+            UseShellExecute = true,
+            WindowStyle = ProcessWindowStyle.Hidden
         };
 
         Process.Start(startInfo);
@@ -162,19 +163,45 @@ public class UpdateService : IDisposable
 
     private static string BuildUpdaterScript(int pid, string extractDir, string appDir, string exePath, string updateRoot)
     {
+        var logPath = Path.Combine(updateRoot, "update.log");
+
         var sb = new StringBuilder();
         sb.AppendLine("@echo off");
         sb.AppendLine("chcp 65001 >nul");
+        sb.AppendLine("setlocal");
+        sb.AppendLine($"set \"LOG={logPath}\"");
+        sb.AppendLine("echo [%date% %time%] Updater started > \"%LOG%\"");
+
+        // Ждём завершения текущего процесса приложения.
+        sb.AppendLine("set /a WAITED=0");
         sb.AppendLine(":waitloop");
         sb.AppendLine($"tasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul");
         sb.AppendLine("if not errorlevel 1 (");
         sb.AppendLine("  timeout /t 1 /nobreak >nul");
-        sb.AppendLine("  goto waitloop");
+        sb.AppendLine("  set /a WAITED+=1");
+        sb.AppendLine("  if %WAITED% lss 30 goto waitloop");
         sb.AppendLine(")");
-        sb.AppendLine("timeout /t 1 /nobreak >nul");
-        sb.AppendLine($"robocopy \"{extractDir}\" \"{appDir}\" /E /IS /IT /R:3 /W:2 /NFL /NDL /NJH /NJS /NP >nul");
-        sb.AppendLine($"start \"\" \"{exePath}\"");
-        sb.AppendLine($"rmdir /S /Q \"{extractDir}\"");
+
+        // Небольшая задержка, чтобы ОС освободила файловые блокировки.
+        sb.AppendLine("timeout /t 2 /nobreak >nul");
+        sb.AppendLine($"echo [%date% %time%] Copying files to \"{appDir}\" >> \"%LOG%\"");
+
+        // robocopy: /R:5 /W:2 — повторы при заблокированных файлах.
+        sb.AppendLine($"robocopy \"{extractDir}\" \"{appDir}\" /E /IS /IT /R:5 /W:2 /NP >> \"%LOG%\" 2>&1");
+        sb.AppendLine("set \"RC=%ERRORLEVEL%\"");
+        sb.AppendLine($"echo [%date% %time%] robocopy exit code %RC% >> \"%LOG%\"");
+
+        // robocopy: коды 0-7 — успех, 8+ — ошибка.
+        sb.AppendLine("if %RC% GEQ 8 (");
+        sb.AppendLine($"  echo [%date% %time%] Copy failed, aborting restart >> \"%LOG%\"");
+        sb.AppendLine("  goto cleanup");
+        sb.AppendLine(")");
+
+        sb.AppendLine($"echo [%date% %time%] Starting \"{exePath}\" >> \"%LOG%\"");
+        sb.AppendLine($"start \"\" /D \"{appDir}\" \"{exePath}\"");
+
+        sb.AppendLine(":cleanup");
+        sb.AppendLine($"rmdir /S /Q \"{extractDir}\" >nul 2>&1");
         sb.AppendLine("(goto) 2>nul & del \"%~f0\"");
         return sb.ToString();
     }

@@ -51,7 +51,7 @@
             </ScrollViewer>
         </TabItem>
 
-        <TabItem Header="Горячие клавиши" Style="{StaticResource TabStyle}">
+        <TabItem Header="Запись" Style="{StaticResource TabStyle}">
             <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="4,12,4,4">
                 <Border Style="{StaticResource CardBorderStyle}">
                     <StackPanel>
@@ -62,7 +62,7 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0"
-                                       Text="Запись"
+                                       Text="Горячая клавиша"
                                        Style="{StaticResource LabelStyle}"
                                        VerticalAlignment="Center"
                                        Margin="0,0,12,0"/>

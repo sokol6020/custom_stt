@@ -10,7 +10,8 @@ public enum TrayIconStatus
 {
     Ready,
     Recording,
-    Processing
+    Processing,
+    Downloading
 }
 
 public class TrayIconService : IDisposable
@@ -18,12 +19,14 @@ public class TrayIconService : IDisposable
     private static readonly Color IdleColor = Color.FromArgb(156, 163, 175);
     private static readonly Color RecordingColor = Color.FromArgb(31, 157, 85);
     private static readonly Color ProcessingColor = Color.FromArgb(234, 179, 8);
+    private static readonly Color DownloadingColor = Color.FromArgb(91, 141, 239);
 
     private NotifyIcon? _notifyIcon;
     private ContextMenuStrip? _contextMenu;
     private Icon? _idleIcon;
     private Icon? _recordingIcon;
     private Icon? _processingIcon;
+    private Icon? _downloadingIcon;
     private bool _initialized;
 
     public void Initialize()
@@ -83,6 +86,7 @@ public class TrayIconService : IDisposable
         {
             TrayIconStatus.Recording => _recordingIcon ??= AppIconHelper.GetTrayIconFromColor(RecordingColor),
             TrayIconStatus.Processing => _processingIcon ??= AppIconHelper.GetTrayIconFromColor(ProcessingColor),
+            TrayIconStatus.Downloading => _downloadingIcon ??= AppIconHelper.GetTrayIconFromColor(DownloadingColor),
             _ => GetIdleIcon()
         };
 
@@ -90,6 +94,7 @@ public class TrayIconService : IDisposable
         {
             TrayIconStatus.Recording => "Speech to Text — запись",
             TrayIconStatus.Processing => "Speech to Text — обработка",
+            TrayIconStatus.Downloading => "Speech to Text — скачивание",
             _ => "Speech to Text — ожидание"
         };
     }
@@ -133,6 +138,7 @@ public class TrayIconService : IDisposable
         _idleIcon?.Dispose();
         _recordingIcon?.Dispose();
         _processingIcon?.Dispose();
+        _downloadingIcon?.Dispose();
         GC.SuppressFinalize(this);
     }
 }

@@ -167,6 +167,9 @@ public partial class MainViewModel : ObservableObject
     private bool _isProcessing;
 
     [ObservableProperty]
+    private bool _isDownloading;
+
+    [ObservableProperty]
     private double _processingProgress;
 
     [ObservableProperty]
@@ -278,6 +281,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
+            IsDownloading = true;
             IsProcessing = true;
             ProcessingProgress = 0;
             ProcessingStageText = $"Скачивание модели {model}...";
@@ -301,6 +305,7 @@ public partial class MainViewModel : ObservableObject
             _lastConfirmedModelIndex = index;
             SaveSettings();
 
+            IsDownloading = false;
             ProcessingStageText = $"Загрузка модели {model}...";
             ProgressCaptionText = ProcessingStageText;
             RecordingStatus = ProcessingStageText;
@@ -315,6 +320,7 @@ public partial class MainViewModel : ObservableObject
         }
         finally
         {
+            IsDownloading = false;
             IsProcessing = false;
         }
     }
@@ -502,7 +508,12 @@ public partial class MainViewModel : ObservableObject
     private void UpdateOverlayState()
     {
         OverlayStatus status;
-        if (IsRecording)
+        if (IsDownloading)
+        {
+            status = OverlayStatus.Downloading;
+            OverlayRecordingIndicator = "● Скачивание";
+        }
+        else if (IsRecording)
         {
             status = OverlayStatus.Recording;
             OverlayRecordingIndicator = "● Запись";
@@ -524,7 +535,7 @@ public partial class MainViewModel : ObservableObject
 
     private void SyncOverlayProgress()
     {
-        if (IsProcessing)
+        if (IsDownloading || IsProcessing)
         {
             _overlayService.SetProgress(ProcessingProgress, ProcessingStageText);
             return;
@@ -537,6 +548,12 @@ public partial class MainViewModel : ObservableObject
         }
 
         _overlayService.SetProgress(0, "Готов к работе");
+    }
+
+    partial void OnIsDownloadingChanged(bool value)
+    {
+        UpdateOverlayState();
+        SyncTrayStatus();
     }
 
     private void UpdateOverlayPanelStatus()
@@ -557,11 +574,13 @@ public partial class MainViewModel : ObservableObject
 
     private void SyncTrayStatus()
     {
-        var trayStatus = IsRecording
-            ? TrayIconStatus.Recording
-            : IsProcessing
-                ? TrayIconStatus.Processing
-                : TrayIconStatus.Ready;
+        var trayStatus = IsDownloading
+            ? TrayIconStatus.Downloading
+            : IsRecording
+                ? TrayIconStatus.Recording
+                : IsProcessing
+                    ? TrayIconStatus.Processing
+                    : TrayIconStatus.Ready;
 
         _trayIconService.SetStatus(trayStatus);
     }
@@ -692,6 +711,7 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
+            IsDownloading = true;
             IsProcessing = true;
             ProcessingProgress = 0;
             ProcessingStageText = $"Скачивание обновления {update.Version}...";
@@ -706,6 +726,7 @@ public partial class MainViewModel : ObservableObject
 
             var zipPath = await _updateService.DownloadUpdateAsync(update, progress);
 
+            IsDownloading = false;
             ProcessingStageText = "Установка обновления...";
             ProgressCaptionText = ProcessingStageText;
             UpdateStatusText = ProcessingStageText;
@@ -726,6 +747,7 @@ public partial class MainViewModel : ObservableObject
         }
         finally
         {
+            IsDownloading = false;
             IsProcessing = false;
         }
     }
@@ -826,6 +848,8 @@ public partial class MainViewModel : ObservableObject
 
             var downloadProgress = new Progress<double>(p =>
             {
+                if (!IsDownloading)
+                    IsDownloading = true;
                 ProcessingStageText = $"Скачивание модели {SelectedModel}...";
                 ProgressCaptionText = ProcessingStageText;
                 var mapped = 15 + p * 0.15;
@@ -835,6 +859,7 @@ public partial class MainViewModel : ObservableObject
 
             var modelLoaded = await _speechRecognitionService.LoadModelAsync(
                 SelectedModel, SelectedLanguage, UseGpu, downloadProgress);
+            IsDownloading = false;
             if (!modelLoaded)
             {
                 RecordingStatus = "Ошибка: модель не загружена";
@@ -907,6 +932,7 @@ public partial class MainViewModel : ObservableObject
         }
         finally
         {
+            IsDownloading = false;
             IsProcessing = false;
             ProcessingProgress = 0;
             ProcessingStageText = "Готов к работе";

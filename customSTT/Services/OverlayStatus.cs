@@ -4,5 +4,6 @@ public enum OverlayStatus
 {
     Idle,
     Recording,
-    Processing
+    Processing,
+    Downloading
 }

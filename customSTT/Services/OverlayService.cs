@@ -31,10 +31,12 @@ public class OverlayService : IDisposable
     public static readonly Color IdleColor = Color.FromRgb(156, 163, 175);
     public static readonly Color RecordingColor = Color.FromRgb(31, 157, 85);
     public static readonly Color ProcessingColor = Color.FromRgb(234, 179, 8);
+    public static readonly Color DownloadingColor = Color.FromRgb(91, 141, 239);
 
     private static readonly SolidColorBrush IdleBrush = new(IdleColor);
     private static readonly SolidColorBrush RecordingBrush = new(RecordingColor);
     private static readonly SolidColorBrush ProcessingBrush = new(ProcessingColor);
+    private static readonly SolidColorBrush DownloadingBrush = new(DownloadingColor);
     private static readonly SolidColorBrush ProcessingTextBrush = new(Color.FromRgb(255, 240, 170));
     private static readonly SolidColorBrush ProgressLabelBrush = new(Color.FromRgb(200, 200, 210));
     private static readonly SolidColorBrush TrackBrush = new(Color.FromRgb(45, 45, 55));
@@ -60,6 +62,7 @@ public class OverlayService : IDisposable
         IdleBrush.Freeze();
         RecordingBrush.Freeze();
         ProcessingBrush.Freeze();
+        DownloadingBrush.Freeze();
         ProcessingTextBrush.Freeze();
         ProgressLabelBrush.Freeze();
         TrackBrush.Freeze();
@@ -330,6 +333,13 @@ public class OverlayService : IDisposable
                 _blinkTimer.Start();
                 break;
 
+            case OverlayStatus.Downloading:
+                _indicator.Fill = DownloadingBrush;
+                _statusText.Text = "СКАЧИВАНИЕ";
+                _statusText.Foreground = Brushes.White;
+                _blinkTimer.Start();
+                break;
+
             default:
                 _indicator.Fill = IdleBrush;
                 _statusText.Text = "ОЖИДАНИЕ";
@@ -364,6 +374,7 @@ public class OverlayService : IDisposable
         {
             OverlayStatus.Recording => RecordingBrush,
             OverlayStatus.Processing => ProcessingBrush,
+            OverlayStatus.Downloading => DownloadingBrush,
             _ => IdleBrush
         };
     }

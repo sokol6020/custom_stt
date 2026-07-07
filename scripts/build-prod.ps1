@@ -95,6 +95,13 @@ if ($appVersion -ne $builtVersion) {
     Write-Warning 'Project version and built DLL version do not match.'
 }
 
+Write-Host ''
+Write-Host 'Tidying publish layout (moving dependencies into lib\)...'
+& (Join-Path $PSScriptRoot 'tidy-publish.ps1') -PublishDir $Output
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+    throw 'tidy-publish.ps1 failed.'
+}
+
 if (-not $NoPause -and $Host.Name -eq 'ConsoleHost') {
     Read-Host 'Press Enter to continue'
 }
