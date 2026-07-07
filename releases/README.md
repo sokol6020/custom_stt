@@ -12,20 +12,30 @@ create-release.bat 1.3.0
 
 ## GitHub Releases
 
-Страница [Releases](https://github.com/sokol6020/custom_stt/releases) заполняется одним из способов:
-
-### 1. Токен (рекомендуется, сразу после локальной сборки)
+### 1. Токен в конфиге (рекомендуется)
 
 ```bat
-set GITHUB_TOKEN=ghp_ваш_токен
+copy config\release.env.example config\release.env
+```
+
+Откройте `config\release.env`, укажите `GITHUB_TOKEN` (scope: **repo**).  
+Файл в `.gitignore`, в репозиторий не попадёт.
+
+```bat
 create-release.bat 1.3.0
 ```
 
-Скрипт загрузит `customSTT.exe` и zip в GitHub Releases.
+Скрипт загрузит zip-архив на [GitHub Releases](https://github.com/sokol6020/custom_stt/releases).
+
+Только загрузка уже собранного релиза:
+
+```bat
+powershell -File scripts\publish-github-release.ps1 -Version 1.3.0
+```
 
 ### 2. GitHub Actions (тег)
 
-Если `GITHUB_TOKEN` не задан, `create-release.bat` отправляет тег `v1.3.0` — CI собирает и публикует релиз.
+Если `config\release.env` не задан, `create-release.bat` отправляет тег `v1.3.0` — CI собирает и публикует релиз.
 
 Пересборка существующего тега:
 

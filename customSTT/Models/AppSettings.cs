@@ -80,10 +80,22 @@ public class AppSettings
     public string OutputFormat { get; set; } = "plainText";
 
     /// <summary>
-    /// Прозрачность оверлея (0.0 - 1.0)
+    /// Прозрачность оверлея (0–100%)
     /// </summary>
     [JsonPropertyName("overlayOpacity")]
-    public double OverlayOpacity { get; set; } = 0.3;
+    public double OverlayOpacity { get; set; } = 30;
+
+    /// <summary>
+    /// Угол экрана для оверлея: topLeft, topRight, bottomLeft, bottomRight
+    /// </summary>
+    [JsonPropertyName("overlayCorner")]
+    public string OverlayCorner { get; set; } = "topRight";
+
+    /// <summary>
+    /// Индекс экрана (0 — первый в списке Windows)
+    /// </summary>
+    [JsonPropertyName("overlayScreenIndex")]
+    public int OverlayScreenIndex { get; set; }
 
     /// <summary>
     /// Горячие клавиши для скрытия/показа оверлея
@@ -93,4 +105,46 @@ public class AppSettings
 
     [JsonPropertyName("isOverlayVisible")]
     public bool IsOverlayVisible { get; set; }
+
+    /// <summary>
+    /// Проверять обновления при запуске приложения
+    /// </summary>
+    [JsonPropertyName("checkUpdatesOnStartup")]
+    public bool CheckUpdatesOnStartup { get; set; } = true;
+
+    /// <summary>
+    /// Провайдер редактора текста
+    /// </summary>
+    [JsonPropertyName("editorProvider")]
+    public string EditorProvider { get; set; } = "ollama";
+
+    /// <summary>
+    /// Порт локального API редактора
+    /// </summary>
+    [JsonPropertyName("editorPort")]
+    public int EditorPort { get; set; } = 11434;
+
+    /// <summary>
+    /// API-ключ облачного провайдера
+    /// </summary>
+    [JsonPropertyName("editorApiKey")]
+    public string EditorApiKey { get; set; } = "";
+
+    /// <summary>
+    /// Базовый URL для пользовательского OpenAI API
+    /// </summary>
+    [JsonPropertyName("editorBaseUrl")]
+    public string EditorBaseUrl { get; set; } = EditorDefaults.DefaultCustomBaseUrl;
+
+    /// <summary>
+    /// Имя модели для редактирования текста
+    /// </summary>
+    [JsonPropertyName("editorModel")]
+    public string EditorModel { get; set; } = "";
+
+    /// <summary>
+    /// Промпт для редактирования. {text} — распознанный текст
+    /// </summary>
+    [JsonPropertyName("editorPrompt")]
+    public string EditorPrompt { get; set; } = EditorDefaults.DefaultPrompt;
 }

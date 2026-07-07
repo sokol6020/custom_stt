@@ -11,7 +11,7 @@ Desktop speech-to-text app for Windows. Records microphone audio, transcribes it
 
 ### Features
 
-- Local speech recognition (no cloud) with Whisper models: `tiny`, `base`, `small`, `medium`
+- Local speech recognition (no cloud) with Whisper models: `tiny`, `base`, `small`, `medium`, `large-v3`, `large-v3-turbo`
 - Global hotkey for recording (toggle or hold-to-talk)
 - Overlay with recording/processing status
 - System tray support
@@ -86,7 +86,7 @@ On first run, the selected Whisper model is downloaded into `whisper-models\` ne
 
 ### Release package
 
-Create a versioned release folder with `customSTT.exe`, a full app zip, and release notes:
+Create a versioned release folder with a full app zip and release notes:
 
 ```bat
 create-release.bat 1.2.0
@@ -100,17 +100,18 @@ create-release.bat 1.2.0 "Hold-to-talk hotkey, GPU Vulkan/CUDA, UI fixes"
 
 You can also prepare notes in `release-notes\1.2.0.txt` before running the script.
 
+For **GitHub Releases**, copy `config\release.env.example` to `config\release.env` and set `GITHUB_TOKEN` (gitignored). The script uploads the zip archive automatically.
+
 Output (local, not in git):
 
 ```
 releases\v1.3.0\
-  customSTT.exe
   customSTT-1.3.0-win-x64.zip
   RELEASE_NOTES.txt
   BUILD_INFO.txt
 ```
 
-The script also pushes tag `v1.3.0` to GitHub. **GitHub Actions** builds and publishes assets to [Releases](https://github.com/sokol6020/custom_stt/releases).
+The script uploads to [GitHub Releases](https://github.com/sokol6020/custom_stt/releases) when `config\release.env` is configured; otherwise it pushes tag `v1.3.0` for **GitHub Actions**.
 
 `build-prod.bat` always performs a clean rebuild (`dotnet clean`, wipes `publish\`) so the output is not stale.
 
@@ -145,7 +146,7 @@ customSTT/
 
 ### Возможности
 
-- Локальное распознавание речи (без облака) на моделях Whisper: `tiny`, `base`, `small`, `medium`
+- Локальное распознавание речи (без облака) на моделях Whisper: `tiny`, `base`, `small`, `medium`, `large-v3`, `large-v3-turbo`
 - Глобальная горячая клавиша записи (режим нажатия или удержания)
 - Оверлей со статусом записи и обработки
 - Работа из системного трея
@@ -220,7 +221,7 @@ publish\customSTT.exe
 
 ### Релиз
 
-Создание релиза с `customSTT.exe`, zip-архивом и описанием изменений:
+Создание релиза с zip-архивом и описанием изменений:
 
 ```bat
 create-release.bat 1.2.0
@@ -234,17 +235,18 @@ create-release.bat 1.2.0 "Режим удержания hotkey, GPU Vulkan/CUDA,
 
 Можно заранее положить заметки в `release-notes\1.2.0.txt`.
 
+Для **GitHub Releases** скопируйте `config\release.env.example` в `config\release.env` и укажите `GITHUB_TOKEN` (файл в gitignore). Скрипт загрузит exe и zip.
+
 Результат (локально, не в git):
 
 ```
 releases\v1.3.0\
-  customSTT.exe
   customSTT-1.3.0-win-x64.zip
   RELEASE_NOTES.txt
   BUILD_INFO.txt
 ```
 
-Скрипт также отправляет тег `v1.3.0` на GitHub. **GitHub Actions** собирает и публикует файлы в [Releases](https://github.com/sokol6020/custom_stt/releases).
+Скрипт публикует на [GitHub Releases](https://github.com/sokol6020/custom_stt/releases), если настроен `config\release.env`; иначе отправляет тег `v1.3.0` для **GitHub Actions**.
 
 `build-prod.bat` всегда делает чистую пересборку (`dotnet clean`, очистка `publish\`), чтобы не попадала старая версия.
 

@@ -29,6 +29,8 @@ public partial class MainWindow : Window
         TrayIconService trayIconService,
         TranscriptionHistoryService transcriptionHistoryService,
         OverlayService overlayService,
+        TextEditorService textEditorService,
+        UpdateService updateService,
         SettingsService settingsService)
     {
         _overlayService = overlayService;
@@ -44,6 +46,8 @@ public partial class MainWindow : Window
             trayIconService,
             transcriptionHistoryService,
             overlayService,
+            textEditorService,
+            updateService,
             settingsService);
 
         InitializeComponent();

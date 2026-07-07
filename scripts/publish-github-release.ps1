@@ -2,15 +2,26 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
 
-    [string]$Repo = 'sokol6020/custom_stt',
+    [string]$Repo,
 
-    [string]$Token = $env:GITHUB_TOKEN
+    [string]$Token
 )
 
 $ErrorActionPreference = 'Stop'
 
+& (Join-Path $PSScriptRoot 'load-release-config.ps1') | Out-Null
+
 if ([string]::IsNullOrWhiteSpace($Token)) {
-    throw 'GITHUB_TOKEN is not set. Create a token with repo scope and run: set GITHUB_TOKEN=ghp_...'
+    $Token = $env:GITHUB_TOKEN
+}
+
+if ([string]::IsNullOrWhiteSpace($Repo)) {
+    $Repo = if ($env:GITHUB_REPO) { $env:GITHUB_REPO } else { 'sokol6020/custom_stt' }
+}
+
+if ([string]::IsNullOrWhiteSpace($Token)) {
+    Write-Host 'GITHUB_TOKEN not found. Copy config\release.env.example to config\release.env'
+    exit 2
 }
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -22,20 +33,24 @@ if (-not (Test-Path -LiteralPath $ReleaseDir)) {
 }
 
 $notesPath = Join-Path $ReleaseDir 'RELEASE_NOTES.txt'
-$notes = if (Test-Path $notesPath) { Get-Content -LiteralPath $notesPath -Raw } else { "Release $Version" }
+if (Test-Path -LiteralPath $notesPath) {
+    $notes = [System.IO.File]::ReadAllText($notesPath, [System.Text.UTF8Encoding]::new($false))
+} else {
+    $notes = "Release $Version"
+}
+
+$releasePayloadJson = (@{
+    tag_name = $Tag
+    name     = "customSTT $Tag"
+    body     = $notes
+    draft    = $false
+} | ConvertTo-Json -Compress)
 
 $headers = @{
     Authorization = "Bearer $Token"
     Accept        = 'application/vnd.github+json'
     'X-GitHub-Api-Version' = '2022-11-28'
 }
-
-$releasePayload = @{
-    tag_name = $Tag
-    name     = "customSTT $Tag"
-    body     = $notes
-    draft    = $false
-} | ConvertTo-Json
 
 try {
     $existing = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/tags/$Tag" -Headers $headers -Method Get
@@ -49,7 +64,7 @@ if ($null -ne $existing -and $existing.id) {
 }
 
 Write-Host "Creating GitHub release $Tag..."
-$release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases" -Headers $headers -Method Post -Body $releasePayload -ContentType 'application/json; charset=utf-8'
+$release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases" -Headers $headers -Method Post -Body $releasePayloadJson -ContentType 'application/json; charset=utf-8'
 
 function Upload-Asset {
     param([string]$FilePath)
@@ -63,10 +78,12 @@ function Upload-Asset {
     Write-Host "Uploaded: $name"
 }
 
-$exe = Join-Path $ReleaseDir 'customSTT.exe'
 $zip = Get-ChildItem -Path $ReleaseDir -Filter "customSTT-$Version-win-x64.zip" | Select-Object -First 1
 
-Upload-Asset $exe
-if ($zip) { Upload-Asset $zip.FullName }
+if (-not $zip) {
+    throw "Zip not found in $ReleaseDir"
+}
+
+Upload-Asset $zip.FullName
 
 Write-Host "GitHub release published: $($release.html_url)"

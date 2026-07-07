@@ -12,6 +12,8 @@ public partial class App : Application
     private readonly TrayIconService _trayIconService;
     private readonly TranscriptionHistoryService _transcriptionHistoryService;
     private readonly OverlayService _overlayService;
+    private readonly TextEditorService _textEditorService;
+    private readonly UpdateService _updateService;
     private readonly SettingsService _settingsService;
 
     public App()
@@ -23,6 +25,8 @@ public partial class App : Application
         _trayIconService = new TrayIconService();
         _transcriptionHistoryService = new TranscriptionHistoryService();
         _overlayService = new OverlayService();
+        _textEditorService = new TextEditorService();
+        _updateService = new UpdateService();
         _settingsService = new SettingsService();
     }
 
@@ -41,6 +45,8 @@ public partial class App : Application
             _trayIconService,
             _transcriptionHistoryService,
             _overlayService,
+            _textEditorService,
+            _updateService,
             _settingsService);
 
         MainWindow = mainWindow;
@@ -53,6 +59,8 @@ public partial class App : Application
         _audioCaptureService.Dispose();
         _speechRecognitionService.Dispose();
         _overlayService.Dispose();
+        _textEditorService.Dispose();
+        _updateService.Dispose();
         _trayIconService.Dispose();
 
         base.OnExit(e);

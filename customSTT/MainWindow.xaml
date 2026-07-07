@@ -33,6 +33,9 @@
                 <TabItem Header="История" Style="{StaticResource TabStyle}">
                     <components:HistoryPanelView Margin="0,12,0,0"/>
                 </TabItem>
+                <TabItem Header="Редактор" Style="{StaticResource TabStyle}">
+                    <components:EditorSettingsPanelView Margin="0,12,0,0"/>
+                </TabItem>
                 <TabItem Header="Настройки" Style="{StaticResource TabStyle}">
                     <components:SettingsPanelView Margin="0,12,0,0"/>
                 </TabItem>

@@ -80,6 +80,5 @@ jobs:
           name: customSTT v${{ steps.version.outputs.value }}
           body_path: releases/v${{ steps.version.outputs.value }}/RELEASE_NOTES.txt
           files: |
-            releases/v${{ steps.version.outputs.value }}/customSTT.exe
             releases/v${{ steps.version.outputs.value }}/customSTT-*.zip
           fail_on_unmatched_files: true

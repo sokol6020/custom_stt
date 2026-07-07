@@ -18,6 +18,9 @@ whisper-models/
 **/Data/appsettings.json
 **/Data/transcription_history.json
 
+# Release secrets (tracked: config/release.env.example)
+config/release.env
+
 # IDE
 .idea/
 .vs/

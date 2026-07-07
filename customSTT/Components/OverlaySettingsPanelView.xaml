@@ -1,0 +1,62 @@
+<UserControl x:Class="customSTT.Components.OverlaySettingsPanelView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             HorizontalAlignment="Stretch"
+             FontFamily="{StaticResource AppFont}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="4,12,4,4">
+        <Border Style="{StaticResource CardBorderStyle}">
+            <StackPanel>
+                <TextBlock Text="Прозрачность"
+                           Style="{StaticResource LabelStyle}"
+                           Margin="0,0,0,6"/>
+                <Grid Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Slider Grid.Column="0"
+                            Minimum="0"
+                            Maximum="100"
+                            TickFrequency="10"
+                            IsSnapToTickEnabled="True"
+                            Value="{Binding OverlayOpacity}"
+                            VerticalAlignment="Center"
+                            Margin="0,0,12,0"/>
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding OverlayOpacity, StringFormat={}{0:F0}%}"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               VerticalAlignment="Center"
+                               MinWidth="40"
+                               TextAlignment="Right"/>
+                </Grid>
+
+                <TextBlock Text="Положение"
+                           Style="{StaticResource LabelStyle}"
+                           Margin="0,0,0,6"/>
+                <ComboBox ItemsSource="{Binding AvailableOverlayCorners}"
+                          SelectedIndex="{Binding OverlayCornerIndex}"
+                          Style="{StaticResource ComboBoxStyle}"
+                          Margin="0,0,0,14">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" Foreground="{StaticResource TextPrimaryBrush}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <TextBlock Text="Экран"
+                           Style="{StaticResource LabelStyle}"
+                           Margin="0,0,0,6"/>
+                <ComboBox ItemsSource="{Binding AvailableScreens}"
+                          SelectedIndex="{Binding OverlayScreenIndex}"
+                          Style="{StaticResource ComboBoxStyle}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+        </Border>
+    </ScrollViewer>
+</UserControl>

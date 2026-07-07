@@ -1,0 +1,93 @@
+<UserControl x:Class="customSTT.Components.EditorSettingsPanelView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             HorizontalAlignment="Stretch"
+             FontFamily="{StaticResource AppFont}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="4">
+        <Border Style="{StaticResource CardBorderStyle}">
+            <StackPanel>
+                <TextBlock Text="Нейросеть для постобработки распознанного текста. Локальные провайдеры работают через localhost, облачные — через OpenAI-совместимый API."
+                           Style="{StaticResource BodyTextStyle}"
+                           Margin="0,0,0,14"/>
+
+                <TextBlock Text="Провайдер"
+                           Style="{StaticResource LabelStyle}"
+                           Margin="0,0,0,6"/>
+                <ComboBox ItemsSource="{Binding AvailableEditorProviders}"
+                          SelectedIndex="{Binding EditorProviderIndex}"
+                          Style="{StaticResource ComboBoxStyle}"
+                          Margin="0,0,0,14">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" Foreground="{StaticResource TextPrimaryBrush}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <StackPanel Visibility="{Binding IsLocalEditorProvider, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock Text="Порт"
+                               Style="{StaticResource LabelStyle}"
+                               Margin="0,0,0,6"/>
+                    <TextBox Text="{Binding EditorPort, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource TextBoxStyle}"
+                             Margin="0,0,0,14"
+                             ToolTip="Порт локального API. Ollama — 11434, LM Studio — 1234."/>
+                </StackPanel>
+
+                <StackPanel Visibility="{Binding IsCloudEditorProvider, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock Text="API-ключ"
+                               Style="{StaticResource LabelStyle}"
+                               Margin="0,0,0,6"/>
+                    <TextBox Text="{Binding EditorApiKey, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource TextBoxStyle}"
+                             Margin="0,0,0,14"
+                             ToolTip="Ключ хранится локально в настройках приложения."/>
+                </StackPanel>
+
+                <StackPanel Visibility="{Binding IsEditorBaseUrlVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock Text="Базовый URL API"
+                               Style="{StaticResource LabelStyle}"
+                               Margin="0,0,0,6"/>
+                    <TextBox Text="{Binding EditorBaseUrl, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource TextBoxStyle}"
+                             Margin="0,0,0,14"
+                             ToolTip="Например: https://api.openai.com/v1"/>
+                </StackPanel>
+
+                <TextBlock Text="Модель"
+                           Style="{StaticResource LabelStyle}"
+                           Margin="0,0,0,6"/>
+                <TextBox Text="{Binding EditorModel, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource TextBoxStyle}"
+                         Margin="0,0,0,14"
+                         ToolTip="Имя модели у провайдера. Если пусто — редактирование отключено."/>
+
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="Промпт"
+                               Style="{StaticResource LabelStyle}"
+                               VerticalAlignment="Center"/>
+                    <Button Grid.Column="1"
+                            Content="Сбросить"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Padding="10,4"
+                            Command="{Binding ResetEditorPromptCommand}"/>
+                </Grid>
+                <TextBlock Text="Используйте {text} как место для распознанного текста."
+                           Style="{StaticResource BodyTextStyle}"
+                           FontSize="12"
+                           Margin="0,0,0,6"/>
+                <TextBox Text="{Binding EditorPrompt, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MultilineTextBoxStyle}"
+                         MinHeight="140"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"/>
+            </StackPanel>
+        </Border>
+    </ScrollViewer>
+</UserControl>

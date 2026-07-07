@@ -1,9 +1,12 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using customSTT.Models;
 
 namespace customSTT.Services;
 
@@ -12,6 +15,18 @@ public class OverlayService : IDisposable
     private const double WindowWidth = 230;
     private const double WindowHeight = 82;
     private const double ProgressTrackWidth = 168;
+
+    private const int GWL_EXSTYLE = -20;
+    private const int WS_EX_TRANSPARENT = 0x00000020;
+    private const int WS_EX_LAYERED = 0x00080000;
+    private const int WS_EX_NOACTIVATE = 0x08000000;
+    private const int WS_EX_TOOLWINDOW = 0x00000080;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int GetWindowLong(IntPtr hwnd, int index);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int SetWindowLong(IntPtr hwnd, int index, int newStyle);
 
     public static readonly Color IdleColor = Color.FromRgb(156, 163, 175);
     public static readonly Color RecordingColor = Color.FromRgb(31, 157, 85);
@@ -32,6 +47,9 @@ public class OverlayService : IDisposable
     private ScaleTransform? _progressScale;
     private bool _isVisible;
     private bool _isInitialized;
+    private double _opacity = 0.3;
+    private OverlayCorner _corner = OverlayCorner.TopRight;
+    private int _screenIndex;
     private OverlayStatus _status = OverlayStatus.Idle;
     private double _progress;
     private string _progressMessage = "Готов к работе";
@@ -64,16 +82,32 @@ public class OverlayService : IDisposable
         });
     }
 
+    public void SetLayout(double opacity, OverlayCorner corner, int screenIndex)
+    {
+        _opacity = Math.Clamp(opacity, 0, 1.0);
+        _corner = corner;
+        _screenIndex = screenIndex;
+
+        if (!_isInitialized)
+            return;
+
+        RunOnUi(() =>
+        {
+            if (_overlayWindow == null)
+                return;
+
+            _overlayWindow.Opacity = _opacity;
+            PositionOverlayWindow();
+        });
+    }
+
     private void CreateOverlayWindow()
     {
-        var workArea = SystemParameters.WorkArea;
-
         _overlayWindow = new Window
         {
             Width = WindowWidth,
             Height = WindowHeight,
-            Left = workArea.Right - WindowWidth - 16,
-            Top = workArea.Top + 16,
+            Opacity = _opacity,
             Topmost = true,
             WindowStyle = WindowStyle.None,
             AllowsTransparency = true,
@@ -84,6 +118,8 @@ public class OverlayService : IDisposable
             Focusable = false,
             SizeToContent = SizeToContent.Manual
         };
+
+        _overlayWindow.SourceInitialized += OnOverlaySourceInitialized;
 
         var root = new Border
         {
@@ -180,8 +216,39 @@ public class OverlayService : IDisposable
 
         root.Child = layout;
         _overlayWindow.Content = root;
+        PositionOverlayWindow();
         _overlayWindow.Visibility = Visibility.Collapsed;
         _isVisible = false;
+    }
+
+    private void OnOverlaySourceInitialized(object? sender, EventArgs e)
+    {
+        MakeWindowClickThrough();
+    }
+
+    private void MakeWindowClickThrough()
+    {
+        if (_overlayWindow == null)
+            return;
+
+        var hwnd = new WindowInteropHelper(_overlayWindow).Handle;
+        if (hwnd == IntPtr.Zero)
+            return;
+
+        var exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+        exStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
+        SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
+    }
+
+    private void PositionOverlayWindow()
+    {
+        if (_overlayWindow == null)
+            return;
+
+        var workArea = OverlayLayoutHelper.GetWorkArea(_screenIndex);
+        var position = OverlayLayoutHelper.GetOverlayPosition(workArea, WindowWidth, WindowHeight, _corner);
+        _overlayWindow.Left = position.X;
+        _overlayWindow.Top = position.Y;
     }
 
     public void Show()
@@ -280,6 +347,7 @@ public class OverlayService : IDisposable
     {
         return message.Contains("Загрузка", StringComparison.OrdinalIgnoreCase)
             || message.Contains("Распознавание", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("Редактирование", StringComparison.OrdinalIgnoreCase)
             || message.Contains("Вставка", StringComparison.OrdinalIgnoreCase)
             || message.Contains("Остановка", StringComparison.OrdinalIgnoreCase);
     }

@@ -21,9 +21,6 @@ if (-not (Test-Path -LiteralPath $exeSource)) {
 
 New-Item -ItemType Directory -Force -Path $ReleaseDir | Out-Null
 
-$exeTarget = Join-Path $ReleaseDir 'customSTT.exe'
-Copy-Item -LiteralPath $exeSource -Destination $exeTarget -Force
-
 $zipName = "customSTT-$Version-win-x64.zip"
 $zipPath = Join-Path $ReleaseDir $zipName
 if (Test-Path -LiteralPath $zipPath) {
@@ -51,12 +48,10 @@ Built: $builtAt
 Platform: win-x64 (self-contained)
 
 Files:
-  - customSTT.exe
   - $zipName
 
 "@
 $meta | Set-Content -LiteralPath (Join-Path $ReleaseDir 'BUILD_INFO.txt') -Encoding UTF8
 
 Write-Host "Release packaged: $ReleaseDir"
-Write-Host "  $exeTarget"
 Write-Host "  $zipPath"

@@ -87,24 +87,28 @@ if %errorlevel% neq 0 (
 echo.
 echo === РЕЛИЗ ГОТОВ ===
 echo Папка: %RELEASE_DIR%
-echo   customSTT.exe
 echo   customSTT-%VERSION%-win-x64.zip
 echo   RELEASE_NOTES.txt
 echo   BUILD_INFO.txt
 echo.
 
 set "GIT_TAG=v%VERSION%"
-if defined GITHUB_TOKEN (
-    echo Публикация на GitHub Releases через GITHUB_TOKEN...
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\publish-github-release.ps1" -Version "%VERSION%"
-    if %errorlevel% neq 0 (
-        echo ОШИБКА публикации на GitHub
-        pause
-        exit /b %errorlevel%
-    )
-    goto release_done
+echo Публикация на GitHub Releases...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\publish-github-release.ps1" -Version "%VERSION%"
+if %errorlevel%==2 (
+    echo.
+    echo Токен не задан. Скопируйте config\release.env.example в config\release.env и укажите GITHUB_TOKEN.
+    echo Пробую публикацию через git tag %GIT_TAG%...
+    goto publish_via_tag
 )
+if %errorlevel% neq 0 (
+    echo ОШИБКА публикации на GitHub
+    pause
+    exit /b %errorlevel%
+)
+goto release_done
 
+:publish_via_tag
 echo Публикация на GitHub Releases (тег %GIT_TAG%)...
 git rev-parse --is-inside-work-tree >nul 2>&1
 if %errorlevel% neq 0 (

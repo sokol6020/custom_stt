@@ -21,7 +21,11 @@ public partial class MainViewModel : ObservableObject
     private readonly TrayIconService _trayIconService;
     private readonly TranscriptionHistoryService _transcriptionHistoryService;
     private readonly OverlayService _overlayService;
+    private readonly TextEditorService _textEditorService;
+    private readonly UpdateService _updateService;
     private readonly SettingsService _settingsService;
+
+    private bool _isUpdateInProgress;
 
     private AppSettings? _settings;
     public AppSettings Settings
@@ -54,10 +58,11 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private int _selectedLanguageIndex = 0;
 
-    public static readonly string[] SupportedModels = { "tiny", "base", "small", "medium" };
+    public static readonly string[] SupportedModels = SpeechRecognitionService.SupportedModels;
     public static readonly string[] SupportedLanguages = { "auto", "ru", "en", "de", "fr", "es", "it", "ja", "zh" };
 
-    public string[] AvailableModels => SupportedModels;
+    public string[] AvailableModels { get; } =
+        Array.ConvertAll(SpeechRecognitionService.ModelOptions, static o => o.DisplayName);
     public string[] AvailableLanguages => SupportedLanguages;
 
     [ObservableProperty]
@@ -65,6 +70,8 @@ public partial class MainViewModel : ObservableObject
 
     private bool _isLoadingSettings;
     private bool _hotkeysReady;
+    private bool _suppressModelChange;
+    private int _lastConfirmedModelIndex;
 
     [ObservableProperty]
     private int _hotkeyModeIndex;
@@ -113,6 +120,12 @@ public partial class MainViewModel : ObservableObject
     private bool _minimizeToTrayOnStartup;
 
     [ObservableProperty]
+    private bool _checkUpdatesOnStartup = true;
+
+    [ObservableProperty]
+    private string _updateStatusText = "";
+
+    [ObservableProperty]
     private bool _useGpu = true;
 
     [ObservableProperty]
@@ -122,7 +135,18 @@ public partial class MainViewModel : ObservableObject
     private string _outputFormat = "plainText";
 
     [ObservableProperty]
-    private double _overlayOpacity = 0.3;
+    private double _overlayOpacity = 30;
+
+    [ObservableProperty]
+    private int _overlayCornerIndex = (int)OverlayCorner.TopRight;
+
+    [ObservableProperty]
+    private int _overlayScreenIndex;
+
+    public string[] AvailableOverlayCorners => OverlayCornerExtensions.DisplayNames;
+
+    private readonly ObservableCollection<string> _availableScreens = new();
+    public ObservableCollection<string> AvailableScreens => _availableScreens;
 
     [ObservableProperty]
     private string _overlayHotkey = "F1";
@@ -151,6 +175,35 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _progressCaptionText = "Готов к работе";
 
+    [ObservableProperty]
+    private int _editorProviderIndex;
+
+    [ObservableProperty]
+    private int _editorPort = 11434;
+
+    [ObservableProperty]
+    private string _editorApiKey = "";
+
+    [ObservableProperty]
+    private string _editorBaseUrl = EditorDefaults.DefaultCustomBaseUrl;
+
+    [ObservableProperty]
+    private string _editorModel = "";
+
+    [ObservableProperty]
+    private string _editorPrompt = EditorDefaults.DefaultPrompt;
+
+    public string[] AvailableEditorProviders => EditorProviderExtensions.DisplayNames;
+
+    public bool IsLocalEditorProvider => CurrentEditorProvider.IsLocal();
+
+    public bool IsCloudEditorProvider => CurrentEditorProvider.RequiresApiKey();
+
+    public bool IsEditorBaseUrlVisible => CurrentEditorProvider.RequiresBaseUrl();
+
+    private EditorProviderKind CurrentEditorProvider =>
+        EditorProviderExtensions.FromIndex(EditorProviderIndex);
+
     partial void OnHotkeyDisplayChanged(string value)
     {
         OnPropertyChanged(nameof(HotkeyHintText));
@@ -168,9 +221,102 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnSelectedModelIndexChanged(int value)
     {
-        if (value >= 0 && value < SupportedModels.Length)
-            SelectedModel = SupportedModels[value];
-        SaveSettings();
+        if (value < 0 || value >= SupportedModels.Length)
+            return;
+
+        SelectedModel = SupportedModels[value];
+
+        if (_isLoadingSettings || _suppressModelChange)
+        {
+            _lastConfirmedModelIndex = value;
+            return;
+        }
+
+        _ = HandleModelChangeAsync(value);
+    }
+
+    private async Task HandleModelChangeAsync(int newIndex)
+    {
+        var model = SupportedModels[newIndex];
+
+        if (_speechRecognitionService.IsModelAvailable(model))
+        {
+            _lastConfirmedModelIndex = newIndex;
+            SaveSettings();
+            _ = _speechRecognitionService.LoadModelAsync(model, SelectedLanguage, UseGpu);
+            return;
+        }
+
+        var displayName = newIndex < AvailableModels.Length ? AvailableModels[newIndex] : model;
+        var sizeText = SpeechRecognitionService.GetModelSizeText(model);
+        var answer = MessageBox.Show(
+            $"Модель «{displayName}» ещё не скачана (~{sizeText}). Скачать сейчас?",
+            "Скачивание модели",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (answer != MessageBoxResult.Yes)
+        {
+            RevertModelSelection();
+            return;
+        }
+
+        await DownloadAndLoadModelAsync(model, newIndex);
+    }
+
+    private void RevertModelSelection()
+    {
+        _suppressModelChange = true;
+        SelectedModelIndex = _lastConfirmedModelIndex;
+        SelectedModel = SupportedModels[_lastConfirmedModelIndex];
+        _suppressModelChange = false;
+    }
+
+    private async Task DownloadAndLoadModelAsync(string model, int index)
+    {
+        var displayName = index < AvailableModels.Length ? AvailableModels[index] : model;
+
+        try
+        {
+            IsProcessing = true;
+            ProcessingProgress = 0;
+            ProcessingStageText = $"Скачивание модели {model}...";
+            ProgressCaptionText = ProcessingStageText;
+            RecordingStatus = ProcessingStageText;
+
+            var progress = new Progress<double>(p =>
+            {
+                if (Math.Abs(ProcessingProgress - p) >= 1 || p >= 100)
+                    ProcessingProgress = p;
+            });
+
+            var downloaded = await _speechRecognitionService.EnsureModelDownloadedAsync(model, progress);
+            if (!downloaded)
+            {
+                RecordingStatus = $"Не удалось скачать модель «{displayName}»";
+                RevertModelSelection();
+                return;
+            }
+
+            _lastConfirmedModelIndex = index;
+            SaveSettings();
+
+            ProcessingStageText = $"Загрузка модели {model}...";
+            ProgressCaptionText = ProcessingStageText;
+            RecordingStatus = ProcessingStageText;
+            await _speechRecognitionService.LoadModelAsync(model, SelectedLanguage, UseGpu);
+
+            RecordingStatus = "Готов";
+        }
+        catch (Exception ex)
+        {
+            RecordingStatus = $"Ошибка: {ex.Message}";
+            RevertModelSelection();
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
     }
 
     partial void OnSelectedLanguageIndexChanged(int value)
@@ -244,6 +390,14 @@ public partial class MainViewModel : ObservableObject
         SaveSettings();
     }
 
+    partial void OnCheckUpdatesOnStartupChanged(bool value)
+    {
+        if (!_isLoadingSettings)
+            SaveSettings();
+    }
+
+    public string AppVersionText => $"Версия {AppVersion.Current}";
+
     partial void OnUseGpuChanged(bool value)
     {
         SaveSettings();
@@ -262,6 +416,22 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnOverlayOpacityChanged(double value)
     {
+        if (!_isLoadingSettings)
+            ApplyOverlayLayout();
+        SaveSettings();
+    }
+
+    partial void OnOverlayCornerIndexChanged(int value)
+    {
+        if (!_isLoadingSettings)
+            ApplyOverlayLayout();
+        SaveSettings();
+    }
+
+    partial void OnOverlayScreenIndexChanged(int value)
+    {
+        if (!_isLoadingSettings)
+            ApplyOverlayLayout();
         SaveSettings();
     }
 
@@ -270,6 +440,52 @@ public partial class MainViewModel : ObservableObject
         SaveSettings();
         if (!string.IsNullOrEmpty(value) && IsValidHotkey(value))
             ApplyRecordingHotkeyMode();
+    }
+
+    partial void OnEditorProviderIndexChanged(int value)
+    {
+        NotifyEditorProviderUi();
+
+        if (!_isLoadingSettings)
+        {
+            var provider = EditorProviderExtensions.FromIndex(value);
+            if (provider.IsLocal())
+                EditorPort = provider.GetDefaultPort();
+            else if (provider.RequiresBaseUrl())
+                EditorBaseUrl = provider.GetDefaultBaseUrl();
+
+            SaveSettings();
+        }
+    }
+
+    partial void OnEditorPortChanged(int value)
+    {
+        if (!_isLoadingSettings)
+            SaveSettings();
+    }
+
+    partial void OnEditorApiKeyChanged(string value)
+    {
+        if (!_isLoadingSettings)
+            SaveSettings();
+    }
+
+    partial void OnEditorBaseUrlChanged(string value)
+    {
+        if (!_isLoadingSettings)
+            SaveSettings();
+    }
+
+    partial void OnEditorModelChanged(string value)
+    {
+        if (!_isLoadingSettings)
+            SaveSettings();
+    }
+
+    partial void OnEditorPromptChanged(string value)
+    {
+        if (!_isLoadingSettings)
+            SaveSettings();
     }
 
     public bool ApplyRecordingHotkeyMode()
@@ -361,6 +577,8 @@ public partial class MainViewModel : ObservableObject
     public ICommand OpenHistoryCommand { get; }
     public ICommand ExitCommand { get; }
     public ICommand AboutCommand { get; }
+    public ICommand ResetEditorPromptCommand { get; }
+    public ICommand CheckForUpdatesCommand { get; }
 
     public MainViewModel(
         AudioCaptureService audioCaptureService,
@@ -370,6 +588,8 @@ public partial class MainViewModel : ObservableObject
         TrayIconService trayIconService,
         TranscriptionHistoryService transcriptionHistoryService,
         OverlayService overlayService,
+        TextEditorService textEditorService,
+        UpdateService updateService,
         SettingsService settingsService)
     {
         _audioCaptureService = audioCaptureService;
@@ -379,6 +599,8 @@ public partial class MainViewModel : ObservableObject
         _trayIconService = trayIconService;
         _transcriptionHistoryService = transcriptionHistoryService;
         _overlayService = overlayService;
+        _textEditorService = textEditorService;
+        _updateService = updateService;
         _settingsService = settingsService;
 
         ToggleRecordingCommand = new RelayCommand(ToggleRecording);
@@ -392,9 +614,12 @@ public partial class MainViewModel : ObservableObject
         OpenHistoryCommand = new RelayCommand(OpenHistoryWindow);
         ExitCommand = new RelayCommand(ExitApp);
         AboutCommand = new RelayCommand(ShowAbout);
+        ResetEditorPromptCommand = new RelayCommand(ResetEditorPrompt);
+        CheckForUpdatesCommand = new RelayCommand(() => _ = CheckForUpdatesAsync(true));
 
         LoadSettings();
         InitializeAudioDevices();
+        InitializeOverlayScreens();
         InitializeHotkeyDisplay();
         LoadHistory();
         _history.CollectionChanged += OnHistoryCollectionChanged;
@@ -407,6 +632,108 @@ public partial class MainViewModel : ObservableObject
         UpdateOverlayState();
 
         _ = _speechRecognitionService.LoadModelAsync(SelectedModel, SelectedLanguage, UseGpu);
+
+        if (CheckUpdatesOnStartup)
+            _ = CheckForUpdatesAsync(false);
+    }
+
+    private async Task CheckForUpdatesAsync(bool interactive)
+    {
+        if (_isUpdateInProgress)
+            return;
+
+        _isUpdateInProgress = true;
+        try
+        {
+            if (interactive)
+                UpdateStatusText = "Проверка обновлений...";
+
+            var update = await _updateService.CheckForUpdateAsync();
+
+            if (update == null)
+            {
+                UpdateStatusText = interactive
+                    ? $"Установлена последняя версия ({AppVersion.Current})"
+                    : "";
+                return;
+            }
+
+            UpdateStatusText = $"Доступна версия {update.Version}";
+
+            var notes = string.IsNullOrWhiteSpace(update.Notes)
+                ? ""
+                : $"\n\nЧто нового:\n{Truncate(update.Notes, 600)}";
+
+            var answer = MessageBox.Show(
+                $"Доступна новая версия {update.Version} (текущая {AppVersion.Current}).{notes}\n\nСкачать и установить сейчас? Приложение перезапустится.",
+                "Обновление",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+
+            if (answer != MessageBoxResult.Yes)
+                return;
+
+            await DownloadAndInstallUpdateAsync(update);
+        }
+        catch (Exception ex)
+        {
+            UpdateStatusText = "Не удалось проверить обновления";
+            if (interactive)
+                MessageBox.Show($"Ошибка проверки обновлений: {ex.Message}", "Обновление",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            _isUpdateInProgress = false;
+        }
+    }
+
+    private async Task DownloadAndInstallUpdateAsync(UpdateInfo update)
+    {
+        try
+        {
+            IsProcessing = true;
+            ProcessingProgress = 0;
+            ProcessingStageText = $"Скачивание обновления {update.Version}...";
+            ProgressCaptionText = ProcessingStageText;
+            UpdateStatusText = ProcessingStageText;
+
+            var progress = new Progress<double>(p =>
+            {
+                if (Math.Abs(ProcessingProgress - p) >= 1 || p >= 100)
+                    ProcessingProgress = p;
+            });
+
+            var zipPath = await _updateService.DownloadUpdateAsync(update, progress);
+
+            ProcessingStageText = "Установка обновления...";
+            ProgressCaptionText = ProcessingStageText;
+            UpdateStatusText = ProcessingStageText;
+
+            _updateService.ApplyUpdateAndRestart(zipPath);
+
+            if (Application.Current.MainWindow is MainWindow mainWindow)
+                mainWindow.PrepareExit();
+
+            _hotkeyService.UnregisterHotkeys();
+            Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            UpdateStatusText = "Не удалось установить обновление";
+            MessageBox.Show($"Ошибка установки обновления: {ex.Message}", "Обновление",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    private static string Truncate(string text, int maxLength)
+    {
+        var trimmed = text.Trim();
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength] + "…";
     }
 
     private void OnHistoryCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -497,7 +824,17 @@ public partial class MainViewModel : ObservableObject
             RecordingStatus = ProcessingStageText;
             ProcessingProgress = 25;
 
-            var modelLoaded = await _speechRecognitionService.LoadModelAsync(SelectedModel, SelectedLanguage, UseGpu);
+            var downloadProgress = new Progress<double>(p =>
+            {
+                ProcessingStageText = $"Скачивание модели {SelectedModel}...";
+                ProgressCaptionText = ProcessingStageText;
+                var mapped = 15 + p * 0.15;
+                if (Math.Abs(ProcessingProgress - mapped) >= 1)
+                    ProcessingProgress = mapped;
+            });
+
+            var modelLoaded = await _speechRecognitionService.LoadModelAsync(
+                SelectedModel, SelectedLanguage, UseGpu, downloadProgress);
             if (!modelLoaded)
             {
                 RecordingStatus = "Ошибка: модель не загружена";
@@ -521,14 +858,32 @@ public partial class MainViewModel : ObservableObject
             RecordingStatus = ProcessingStageText;
             ProcessingProgress = 96;
 
-            if (!string.IsNullOrEmpty(result.Text))
+            var finalText = result.Text;
+            var editorConfig = BuildEditorConfig();
+            if (!string.IsNullOrEmpty(result.Text) && TextEditorService.IsConfigured(editorConfig))
             {
-                await _textInjectionService.InjectTextAsync(result.Text);
+                ProcessingStageText = "Редактирование текста...";
+                RecordingStatus = ProcessingStageText;
+                ProcessingProgress = 88;
+
+                try
+                {
+                    finalText = await _textEditorService.EditTextAsync(result.Text, editorConfig);
+                }
+                catch (Exception editEx)
+                {
+                    RecordingStatus = $"Редактор: {editEx.Message}";
+                }
+            }
+
+            if (!string.IsNullOrEmpty(finalText))
+            {
+                await _textInjectionService.InjectTextAsync(finalText);
 
                 var entry = new TranscriptionEntry
                 {
                     Id = Guid.NewGuid().ToString(),
-                    Text = result.Text,
+                    Text = finalText,
                     Language = result.Language,
                     Model = SelectedModel,
                     DurationSeconds = result.Duration,
@@ -591,10 +946,13 @@ public partial class MainViewModel : ObservableObject
             AutoStart = Settings.AutoStart;
             MinimizedToTray = Settings.MinimizedToTray;
             MinimizeToTrayOnStartup = Settings.MinimizeToTrayOnStartup;
+            CheckUpdatesOnStartup = Settings.CheckUpdatesOnStartup;
             UseGpu = Settings.UseGpu;
             HistoryLimit = Settings.HistoryLimit;
             OutputFormat = Settings.OutputFormat ?? "plainText";
-            OverlayOpacity = Settings.OverlayOpacity;
+            OverlayOpacity = NormalizeOverlayOpacity(Settings.OverlayOpacity);
+            OverlayCornerIndex = OverlayCornerExtensions.FromStorageId(Settings.OverlayCorner).ToIndex();
+            OverlayScreenIndex = Settings.OverlayScreenIndex;
             OverlayHotkey = NormalizeOverlayHotkey(Settings.OverlayHotkey);
             if (Settings.OverlayHotkey != OverlayHotkey)
             {
@@ -603,6 +961,18 @@ public partial class MainViewModel : ObservableObject
             }
 
             IsOverlayVisible = Settings.IsOverlayVisible;
+
+            EditorProviderIndex = EditorProviderExtensions.FromStorageId(Settings.EditorProvider).ToIndex();
+            EditorPort = NormalizeEditorPort(Settings.EditorPort);
+            EditorApiKey = Settings.EditorApiKey ?? "";
+            EditorBaseUrl = string.IsNullOrWhiteSpace(Settings.EditorBaseUrl)
+                ? EditorDefaults.DefaultCustomBaseUrl
+                : Settings.EditorBaseUrl;
+            EditorModel = Settings.EditorModel ?? "";
+            EditorPrompt = string.IsNullOrWhiteSpace(Settings.EditorPrompt)
+                ? EditorDefaults.DefaultPrompt
+                : Settings.EditorPrompt;
+            NotifyEditorProviderUi();
 
             var modelIdx = Array.IndexOf(SupportedModels, SelectedModel);
             if (modelIdx < 0) modelIdx = 1;
@@ -615,6 +985,8 @@ public partial class MainViewModel : ObservableObject
             SelectedLanguageIndex = langIdx;
 
             _transcriptionHistoryService.SetMaxHistoryItems(HistoryLimit);
+            RefreshOverlayScreens();
+            ApplyOverlayLayout();
         }
         catch (Exception ex)
         {
@@ -625,6 +997,39 @@ public partial class MainViewModel : ObservableObject
         {
             _isLoadingSettings = false;
         }
+    }
+
+    private void InitializeOverlayScreens()
+    {
+        RefreshOverlayScreens();
+    }
+
+    private void RefreshOverlayScreens()
+    {
+        var screens = OverlayLayoutHelper.GetScreens();
+        _availableScreens.Clear();
+        foreach (var screen in screens)
+            _availableScreens.Add(screen.DisplayName);
+
+        if (_availableScreens.Count == 0)
+            _availableScreens.Add("Дисплей 1");
+
+        if (OverlayScreenIndex >= _availableScreens.Count)
+            OverlayScreenIndex = Math.Max(0, _availableScreens.Count - 1);
+    }
+
+    private void ApplyOverlayLayout()
+    {
+        var corner = OverlayCornerExtensions.FromIndex(OverlayCornerIndex);
+        _overlayService.SetLayout(OverlayOpacity / 100.0, corner, OverlayScreenIndex);
+    }
+
+    private static double NormalizeOverlayOpacity(double saved)
+    {
+        if (saved > 0 && saved <= 1.0)
+            return Math.Clamp(saved * 100, 0, 100);
+
+        return Math.Clamp(saved, 0, 100);
     }
 
     private void InitializeAudioDevices()
@@ -709,12 +1114,21 @@ public partial class MainViewModel : ObservableObject
             Settings.AutoStart = AutoStart;
             Settings.MinimizedToTray = MinimizedToTray;
             Settings.MinimizeToTrayOnStartup = MinimizeToTrayOnStartup;
+            Settings.CheckUpdatesOnStartup = CheckUpdatesOnStartup;
             Settings.UseGpu = UseGpu;
             Settings.HistoryLimit = HistoryLimit;
             Settings.OutputFormat = OutputFormat;
             Settings.OverlayOpacity = OverlayOpacity;
+            Settings.OverlayCorner = OverlayCornerExtensions.FromIndex(OverlayCornerIndex).ToStorageId();
+            Settings.OverlayScreenIndex = OverlayScreenIndex;
             Settings.OverlayHotkey = OverlayHotkey;
             Settings.IsOverlayVisible = IsOverlayVisible;
+            Settings.EditorProvider = EditorProviderExtensions.FromIndex(EditorProviderIndex).ToStorageId();
+            Settings.EditorPort = NormalizeEditorPort(EditorPort);
+            Settings.EditorApiKey = EditorApiKey.Trim();
+            Settings.EditorBaseUrl = EditorBaseUrl.Trim();
+            Settings.EditorModel = EditorModel.Trim();
+            Settings.EditorPrompt = EditorPrompt;
 
             _settingsService.Save(Settings);
             _transcriptionHistoryService.SetMaxHistoryItems(HistoryLimit);
@@ -725,6 +1139,30 @@ public partial class MainViewModel : ObservableObject
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    private void ResetEditorPrompt()
+    {
+        EditorPrompt = EditorDefaults.DefaultPrompt;
+    }
+
+    private void NotifyEditorProviderUi()
+    {
+        OnPropertyChanged(nameof(IsLocalEditorProvider));
+        OnPropertyChanged(nameof(IsCloudEditorProvider));
+        OnPropertyChanged(nameof(IsEditorBaseUrlVisible));
+    }
+
+    private EditorConfig BuildEditorConfig() => new()
+    {
+        Provider = CurrentEditorProvider,
+        Port = NormalizeEditorPort(EditorPort),
+        Model = EditorModel,
+        Prompt = EditorPrompt,
+        ApiKey = EditorApiKey,
+        BaseUrl = EditorBaseUrl
+    };
+
+    private static int NormalizeEditorPort(int port) => Math.Clamp(port, 1, 65535);
 
     private void ClearHistory()
     {
