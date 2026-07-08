@@ -348,6 +348,88 @@
         <Setter Property="Cursor" Value="Hand"/>
     </Style>
 
+    <Style x:Key="InfoHintButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="18"/>
+        <Setter Property="Height" Value="18"/>
+        <Setter Property="Margin" Value="6,0,0,0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Cursor" Value="Help"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="ToolTipService.InitialShowDelay" Value="200"/>
+        <Setter Property="ToolTipService.ShowDuration" Value="60000"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="IconBorder"
+                            Width="18"
+                            Height="18"
+                            Background="Transparent"
+                            BorderBrush="{StaticResource TextMutedBrush}"
+                            BorderThickness="1"
+                            CornerRadius="9">
+                        <TextBlock Text="i"
+                                   FontFamily="{StaticResource AppFont}"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   FontStyle="Italic"
+                                   Foreground="{TemplateBinding Foreground}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Margin="0,-1,0,0"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="IconBorder" Property="Background" Value="#1A2030"/>
+                            <Setter TargetName="IconBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="InfoToolTipStyle" TargetType="ToolTip">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="HasDropShadow" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border Background="{StaticResource BgElevatedBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="12,10"
+                            MaxWidth="340">
+                        <ContentPresenter/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="InfoToolTipTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource AppFont}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="LineHeight" Value="18"/>
+    </Style>
+
+    <Style x:Key="InfoToolTipWarningStyle" TargetType="TextBlock" BasedOn="{StaticResource InfoToolTipTextStyle}">
+        <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,8,0,0"/>
+    </Style>
+
     <Style x:Key="HotkeyBadgeStyle" TargetType="Border">
         <Setter Property="Background" Value="#1A2030"/>
         <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>

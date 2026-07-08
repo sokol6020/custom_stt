@@ -15,6 +15,8 @@ public class AudioCaptureService : IDisposable
     private readonly object _lock = new();
     private bool _isCapturing;
 
+    public event EventHandler<byte[]>? AudioDataAvailable;
+
     /// <summary>
     /// Список доступных аудиоустройств
     /// </summary>
@@ -124,10 +126,18 @@ public class AudioCaptureService : IDisposable
 
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
     {
+        if (e.BytesRecorded <= 0)
+            return;
+
+        var chunk = new byte[e.BytesRecorded];
+        Buffer.BlockCopy(e.Buffer, 0, chunk, 0, e.BytesRecorded);
+
         lock (_lock)
         {
-            _currentAudioData.AddRange(e.Buffer.AsSpan(0, e.BytesRecorded));
+            _currentAudioData.AddRange(chunk);
         }
+
+        AudioDataAvailable?.Invoke(this, chunk);
     }
 
     public byte[] GetCapturedData()

@@ -50,6 +50,12 @@ public class AppSettings
     public string HotkeyMode { get; set; } = "toggle";
 
     /// <summary>
+    /// Распознавание и вставка текста по паузам во время записи
+    /// </summary>
+    [JsonPropertyName("dictationOnPause")]
+    public bool DictationOnPause { get; set; }
+
+    /// <summary>
     /// Автозапуск при старте Windows
     /// </summary>
     [JsonPropertyName("autoStart")]

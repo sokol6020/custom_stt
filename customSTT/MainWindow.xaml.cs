@@ -31,6 +31,7 @@ public partial class MainWindow : Window
         OverlayService overlayService,
         TextEditorService textEditorService,
         UpdateService updateService,
+        AutoStartService autoStartService,
         SettingsService settingsService)
     {
         _overlayService = overlayService;
@@ -48,6 +49,7 @@ public partial class MainWindow : Window
             overlayService,
             textEditorService,
             updateService,
+            autoStartService,
             settingsService);
 
         InitializeComponent();
@@ -68,6 +70,8 @@ public partial class MainWindow : Window
 
         if (StartupOptions.MinimizeToTrayOnStartup || _viewModel.MinimizeToTrayOnStartup)
             _trayIconService.Minimize();
+
+        _viewModel.ScheduleStartupUpdateCheck();
     }
 
     protected override void OnSourceInitialized(EventArgs e)

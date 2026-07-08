@@ -96,6 +96,26 @@
                             </ComboBox.ItemTemplate>
                         </ComboBox>
 
+                        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                            <CheckBox Content="Распознавание по паузам"
+                                      IsChecked="{Binding DictationOnPause}"
+                                      Style="{StaticResource CheckBoxStyle}"
+                                      Margin="0"
+                                      VerticalAlignment="Center"/>
+                            <Button Style="{StaticResource InfoHintButtonStyle}">
+                                <Button.ToolTip>
+                                    <ToolTip Style="{StaticResource InfoToolTipStyle}">
+                                        <StackPanel>
+                                            <TextBlock Style="{StaticResource InfoToolTipTextStyle}"
+                                                       Text="Во время записи каждая фраза распознаётся и вставляется после короткой паузы. По умолчанию выключено: запись от нажатия до повторного нажатия или удержания клавиши."/>
+                                            <TextBlock Style="{StaticResource InfoToolTipWarningStyle}"
+                                                       Text="Нельзя использовать вместе с AI-редактором: фразы вставляются сразу, без пост-обработки."/>
+                                        </StackPanel>
+                                    </ToolTip>
+                                </Button.ToolTip>
+                            </Button>
+                        </StackPanel>
+
                         <Border Background="{StaticResource BgSecondaryBrush}"
                                 BorderBrush="{StaticResource AccentBrush}"
                                 BorderThickness="1"

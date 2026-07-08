@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -23,6 +24,7 @@ public partial class MainViewModel : ObservableObject
     private readonly OverlayService _overlayService;
     private readonly TextEditorService _textEditorService;
     private readonly UpdateService _updateService;
+    private readonly AutoStartService _autoStartService;
     private readonly SettingsService _settingsService;
 
     private bool _isUpdateInProgress;
@@ -71,10 +73,19 @@ public partial class MainViewModel : ObservableObject
     private bool _isLoadingSettings;
     private bool _hotkeysReady;
     private bool _suppressModelChange;
+    private bool _suppressAutoStartChange;
     private int _lastConfirmedModelIndex;
+
+    private readonly VoiceActivityPhraseDetector _phraseDetector = new();
+    private readonly SemaphoreSlim _phraseRecognitionLock = new(1, 1);
+    private EventHandler<byte[]>? _audioChunkHandler;
+    private int _pendingPhraseRecognitions;
 
     [ObservableProperty]
     private int _hotkeyModeIndex;
+
+    [ObservableProperty]
+    private bool _dictationOnPause;
 
     public void SetHotkeysReady() => _hotkeysReady = true;
 
@@ -222,6 +233,12 @@ public partial class MainViewModel : ObservableObject
         SaveSettings();
     }
 
+    partial void OnDictationOnPauseChanged(bool value)
+    {
+        if (!_isLoadingSettings)
+            SaveSettings();
+    }
+
     partial void OnSelectedModelIndexChanged(int value)
     {
         if (value < 0 || value >= SupportedModels.Length)
@@ -336,6 +353,9 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnIsOverlayVisibleChanged(bool value)
     {
+        if (_isLoadingSettings)
+            return;
+
         if (value)
             _overlayService.Show();
         else
@@ -383,6 +403,26 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnAutoStartChanged(bool value)
     {
+        if (_suppressAutoStartChange)
+            return;
+
+        if (!_isLoadingSettings)
+        {
+            try
+            {
+                _autoStartService.SetEnabled(value, MinimizeToTrayOnStartup);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Не удалось настроить автозапуск: {ex.Message}", "Автозапуск",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                _suppressAutoStartChange = true;
+                AutoStart = !value;
+                _suppressAutoStartChange = false;
+                return;
+            }
+        }
+
         SaveSettings();
     }
 
@@ -393,6 +433,19 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnMinimizeToTrayOnStartupChanged(bool value)
     {
+        if (!_isLoadingSettings && AutoStart)
+        {
+            try
+            {
+                _autoStartService.SetEnabled(true, value);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Не удалось обновить автозапуск: {ex.Message}", "Автозапуск",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
         SaveSettings();
     }
 
@@ -422,22 +475,28 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnOverlayOpacityChanged(double value)
     {
-        if (!_isLoadingSettings)
-            ApplyOverlayLayout();
+        if (_isLoadingSettings)
+            return;
+
+        ApplyOverlayLayout();
         SaveSettings();
     }
 
     partial void OnOverlayCornerIndexChanged(int value)
     {
-        if (!_isLoadingSettings)
-            ApplyOverlayLayout();
+        if (_isLoadingSettings)
+            return;
+
+        ApplyOverlayLayout();
         SaveSettings();
     }
 
     partial void OnOverlayScreenIndexChanged(int value)
     {
-        if (!_isLoadingSettings)
-            ApplyOverlayLayout();
+        if (_isLoadingSettings)
+            return;
+
+        ApplyOverlayLayout();
         SaveSettings();
     }
 
@@ -609,6 +668,7 @@ public partial class MainViewModel : ObservableObject
         OverlayService overlayService,
         TextEditorService textEditorService,
         UpdateService updateService,
+        AutoStartService autoStartService,
         SettingsService settingsService)
     {
         _audioCaptureService = audioCaptureService;
@@ -620,6 +680,7 @@ public partial class MainViewModel : ObservableObject
         _overlayService = overlayService;
         _textEditorService = textEditorService;
         _updateService = updateService;
+        _autoStartService = autoStartService;
         _settingsService = settingsService;
 
         ToggleRecordingCommand = new RelayCommand(ToggleRecording);
@@ -634,40 +695,51 @@ public partial class MainViewModel : ObservableObject
         ExitCommand = new RelayCommand(ExitApp);
         AboutCommand = new RelayCommand(ShowAbout);
         ResetEditorPromptCommand = new RelayCommand(ResetEditorPrompt);
-        CheckForUpdatesCommand = new RelayCommand(() => _ = CheckForUpdatesAsync(true));
+        CheckForUpdatesCommand = new RelayCommand(() => _ = CheckForUpdatesAsync(interactive: true));
+
+        _phraseDetector.PhraseCompleted += OnPhraseCompleted;
 
         LoadSettings();
         InitializeAudioDevices();
-        InitializeOverlayScreens();
         InitializeHotkeyDisplay();
         LoadHistory();
         _history.CollectionChanged += OnHistoryCollectionChanged;
         UpdateHistoryCountText();
 
-        if (IsOverlayVisible)
-            _overlayService.Show();
-
+        ApplyOverlayVisibility(IsOverlayVisible);
         UpdateOverlayPanelStatus();
         UpdateOverlayState();
 
         _ = _speechRecognitionService.LoadModelAsync(SelectedModel, SelectedLanguage, UseGpu);
-
-        if (CheckUpdatesOnStartup)
-            _ = CheckForUpdatesAsync(false);
     }
 
-    private async Task CheckForUpdatesAsync(bool interactive)
+    public void ScheduleStartupUpdateCheck()
+    {
+        if (!CheckUpdatesOnStartup)
+            return;
+
+        _ = RunStartupUpdateCheckAsync();
+    }
+
+    private async Task RunStartupUpdateCheckAsync()
+    {
+        await Task.Delay(1500).ConfigureAwait(true);
+        await CheckForUpdatesAsync(interactive: false, startup: true).ConfigureAwait(true);
+    }
+
+    private async Task CheckForUpdatesAsync(bool interactive, bool startup = false)
     {
         if (_isUpdateInProgress)
             return;
 
         _isUpdateInProgress = true;
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(startup ? 15 : 60));
         try
         {
             if (interactive)
                 UpdateStatusText = "Проверка обновлений...";
 
-            var update = await _updateService.CheckForUpdateAsync();
+            var update = await _updateService.CheckForUpdateAsync(timeoutCts.Token).ConfigureAwait(true);
 
             if (update == null)
             {
@@ -683,28 +755,54 @@ public partial class MainViewModel : ObservableObject
                 ? ""
                 : $"\n\nЧто нового:\n{Truncate(update.Notes, 600)}";
 
-            var answer = MessageBox.Show(
-                $"Доступна новая версия {update.Version} (текущая {AppVersion.Current}).{notes}\n\nСкачать и установить сейчас? Приложение перезапустится.",
-                "Обновление",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Information);
+            var answer = await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                EnsureMainWindowVisibleForDialog();
+                return MessageBox.Show(
+                    $"Доступна новая версия {update.Version} (текущая {AppVersion.Current}).{notes}\n\nСкачать и установить сейчас? Приложение перезапустится.",
+                    "Обновление",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information);
+            });
 
             if (answer != MessageBoxResult.Yes)
                 return;
 
-            await DownloadAndInstallUpdateAsync(update);
+            await DownloadAndInstallUpdateAsync(update).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            if (interactive)
+                UpdateStatusText = "Проверка обновлений отменена";
         }
         catch (Exception ex)
         {
             UpdateStatusText = "Не удалось проверить обновления";
             if (interactive)
-                MessageBox.Show($"Ошибка проверки обновлений: {ex.Message}", "Обновление",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            {
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                    MessageBox.Show($"Ошибка проверки обновлений: {ex.Message}", "Обновление",
+                        MessageBoxButton.OK, MessageBoxImage.Warning));
+            }
         }
         finally
         {
             _isUpdateInProgress = false;
         }
+    }
+
+    private static void EnsureMainWindowVisibleForDialog()
+    {
+        if (Application.Current.MainWindow is not Window mainWindow)
+            return;
+
+        if (mainWindow.Visibility != Visibility.Visible)
+            mainWindow.Show();
+
+        if (mainWindow.WindowState == WindowState.Minimized)
+            mainWindow.WindowState = WindowState.Normal;
+
+        mainWindow.Activate();
     }
 
     private async Task DownloadAndInstallUpdateAsync(UpdateInfo update)
@@ -801,19 +899,41 @@ public partial class MainViewModel : ObservableObject
             IsRecording = true;
             IsProcessing = false;
             ProcessingProgress = 0;
-            ProcessingStageText = "Идёт запись...";
-            ProgressCaptionText = "Идёт запись...";
+            ProcessingStageText = DictationOnPause
+                ? "Запись (по паузам)..."
+                : "Идёт запись...";
+            ProgressCaptionText = ProcessingStageText;
             RecordingStatus = "Запись...";
             UpdateOverlayState();
             SyncTrayStatus();
 
             var deviceIndex = _audioCaptureService.FindDeviceIndexByName(SelectedAudioDevice);
             await _audioCaptureService.StartCaptureAsync(SelectedAudioDevice, deviceIndex);
+
+            if (DictationOnPause)
+            {
+                var modelLoaded = await _speechRecognitionService.LoadModelAsync(
+                    SelectedModel, SelectedLanguage, UseGpu);
+                if (!modelLoaded)
+                {
+                    RecordingStatus = "Ошибка: модель не загружена";
+                    await _audioCaptureService.StopCaptureAsync();
+                    IsRecording = false;
+                    UpdateOverlayState();
+                    SyncTrayStatus();
+                    _textInjectionService.ClearTargetWindow();
+                    return;
+                }
+
+                StartRealtimeDictationSession();
+            }
         }
         catch (Exception ex)
         {
             RecordingStatus = $"Ошибка: {ex.Message}";
             IsRecording = false;
+            StopRealtimeDictationSession();
+            _phraseDetector.Reset();
             UpdateOverlayState();
             SyncTrayStatus();
             _textInjectionService.ClearTargetWindow();
@@ -822,9 +942,38 @@ public partial class MainViewModel : ObservableObject
 
     private async void StopRecordingCore()
     {
+        var useDictationOnPause = DictationOnPause;
+
         try
         {
             IsRecording = false;
+
+            if (_audioChunkHandler != null)
+                _audioCaptureService.AudioDataAvailable -= _audioChunkHandler;
+
+            if (useDictationOnPause)
+            {
+                ProcessingStageText = "Завершение записи...";
+                ProgressCaptionText = ProcessingStageText;
+                RecordingStatus = ProcessingStageText;
+                UpdateOverlayState();
+                SyncTrayStatus();
+
+                await _audioCaptureService.StopCaptureAsync();
+
+                var remaining = _phraseDetector.Flush();
+                _phraseDetector.Reset();
+                if (remaining.Length > 0)
+                    await RecognizeAndInjectPhraseAsync(remaining);
+
+                await WaitForPhraseRecognitionsAsync();
+
+                RecordingStatus = "Готов";
+                return;
+            }
+
+            _phraseDetector.Reset();
+
             IsProcessing = true;
             ProcessingProgress = 5;
             ProcessingStageText = "Остановка записи...";
@@ -945,6 +1094,86 @@ public partial class MainViewModel : ObservableObject
         SaveSettings();
     }
 
+    private void StartRealtimeDictationSession()
+    {
+        _phraseDetector.Reset();
+        _audioChunkHandler ??= OnAudioChunkReceived;
+        _audioCaptureService.AudioDataAvailable += _audioChunkHandler;
+    }
+
+    private void StopRealtimeDictationSession()
+    {
+        if (_audioChunkHandler != null)
+            _audioCaptureService.AudioDataAvailable -= _audioChunkHandler;
+    }
+
+    private void OnAudioChunkReceived(object? sender, byte[] chunk)
+    {
+        _phraseDetector.ProcessChunk(chunk);
+    }
+
+    private void OnPhraseCompleted(byte[] pcm)
+    {
+        _ = RecognizeAndInjectPhraseAsync(pcm);
+    }
+
+    private async Task RecognizeAndInjectPhraseAsync(byte[] pcm)
+    {
+        if (pcm.Length < 6400)
+            return;
+
+        Interlocked.Increment(ref _pendingPhraseRecognitions);
+        try
+        {
+            await _phraseRecognitionLock.WaitAsync();
+            try
+            {
+                var result = await _speechRecognitionService.RecognizeAsync(
+                    pcm, SelectedModel, SelectedLanguage, useGpu: UseGpu);
+
+                if (string.IsNullOrWhiteSpace(result.Text))
+                    return;
+
+                await _textInjectionService.InjectTextAsync(result.Text.Trim());
+
+                var entry = new TranscriptionEntry
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Text = result.Text.Trim(),
+                    Language = result.Language,
+                    Model = SelectedModel,
+                    DurationSeconds = result.Duration,
+                    Timestamp = DateTime.Now
+                };
+                _transcriptionHistoryService.AddToHistory(entry);
+                _history.Add(entry);
+            }
+            finally
+            {
+                _phraseRecognitionLock.Release();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка распознавания фразы: {ex.Message}");
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _pendingPhraseRecognitions);
+        }
+    }
+
+    private async Task WaitForPhraseRecognitionsAsync()
+    {
+        const int maxWaitMs = 120_000;
+        var waited = 0;
+        while (Volatile.Read(ref _pendingPhraseRecognitions) > 0 && waited < maxWaitMs)
+        {
+            await Task.Delay(50);
+            waited += 50;
+        }
+    }
+
     private void ToggleOverlay()
     {
         IsOverlayVisible = !IsOverlayVisible;
@@ -969,6 +1198,7 @@ public partial class MainViewModel : ObservableObject
             SelectedLanguage = Settings.Language ?? "auto";
             HotkeyDisplay = hotkey;
             HotkeyModeIndex = string.Equals(Settings.HotkeyMode, "hold", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            DictationOnPause = Settings.DictationOnPause;
             AutoStart = Settings.AutoStart;
             MinimizedToTray = Settings.MinimizedToTray;
             MinimizeToTrayOnStartup = Settings.MinimizeToTrayOnStartup;
@@ -976,9 +1206,11 @@ public partial class MainViewModel : ObservableObject
             UseGpu = Settings.UseGpu;
             HistoryLimit = Settings.HistoryLimit;
             OutputFormat = Settings.OutputFormat ?? "plainText";
+            RefreshOverlayScreens();
+
             OverlayOpacity = NormalizeOverlayOpacity(Settings.OverlayOpacity);
             OverlayCornerIndex = OverlayCornerExtensions.FromStorageId(Settings.OverlayCorner).ToIndex();
-            OverlayScreenIndex = Settings.OverlayScreenIndex;
+            OverlayScreenIndex = ClampOverlayScreenIndex(Settings.OverlayScreenIndex);
             OverlayHotkey = NormalizeOverlayHotkey(Settings.OverlayHotkey);
             if (Settings.OverlayHotkey != OverlayHotkey)
             {
@@ -1011,8 +1243,8 @@ public partial class MainViewModel : ObservableObject
             SelectedLanguageIndex = langIdx;
 
             _transcriptionHistoryService.SetMaxHistoryItems(HistoryLimit);
-            RefreshOverlayScreens();
             ApplyOverlayLayout();
+            ApplyAutoStartFromSettings();
         }
         catch (Exception ex)
         {
@@ -1025,9 +1257,16 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    private void InitializeOverlayScreens()
+    private void ApplyAutoStartFromSettings()
     {
-        RefreshOverlayScreens();
+        try
+        {
+            _autoStartService.SetEnabled(AutoStart, MinimizeToTrayOnStartup);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Не удалось применить автозапуск: {ex.Message}");
+        }
     }
 
     private void RefreshOverlayScreens()
@@ -1039,9 +1278,22 @@ public partial class MainViewModel : ObservableObject
 
         if (_availableScreens.Count == 0)
             _availableScreens.Add("Дисплей 1");
+    }
 
-        if (OverlayScreenIndex >= _availableScreens.Count)
-            OverlayScreenIndex = Math.Max(0, _availableScreens.Count - 1);
+    private int ClampOverlayScreenIndex(int index)
+    {
+        if (_availableScreens.Count == 0)
+            return 0;
+
+        return Math.Clamp(index, 0, _availableScreens.Count - 1);
+    }
+
+    private void ApplyOverlayVisibility(bool visible)
+    {
+        if (visible)
+            _overlayService.Show();
+        else
+            _overlayService.Hide();
     }
 
     private void ApplyOverlayLayout()
@@ -1135,6 +1387,7 @@ public partial class MainViewModel : ObservableObject
             Settings.Language = SelectedLanguage;
             Settings.Hotkey = HotkeyDisplay;
             Settings.HotkeyMode = HotkeyModeIndex == 1 ? "hold" : "toggle";
+            Settings.DictationOnPause = DictationOnPause;
             Settings.AudioDevice = SelectedAudioDevice;
             Settings.AudioDeviceIndex = _audioCaptureService.FindDeviceIndexByName(SelectedAudioDevice);
             Settings.AutoStart = AutoStart;

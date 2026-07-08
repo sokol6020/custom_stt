@@ -14,6 +14,7 @@ public partial class App : Application
     private readonly OverlayService _overlayService;
     private readonly TextEditorService _textEditorService;
     private readonly UpdateService _updateService;
+    private readonly AutoStartService _autoStartService;
     private readonly SettingsService _settingsService;
 
     public App()
@@ -27,6 +28,7 @@ public partial class App : Application
         _overlayService = new OverlayService();
         _textEditorService = new TextEditorService();
         _updateService = new UpdateService();
+        _autoStartService = new AutoStartService();
         _settingsService = new SettingsService();
     }
 
@@ -47,6 +49,7 @@ public partial class App : Application
             _overlayService,
             _textEditorService,
             _updateService,
+            _autoStartService,
             _settingsService);
 
         MainWindow = mainWindow;
