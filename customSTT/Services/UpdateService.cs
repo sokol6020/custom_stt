@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -41,49 +42,36 @@ public class UpdateService : IDisposable
     }
 
     /// <summary>
-    /// Проверяет последний релиз на GitHub. Возвращает информацию, только если версия новее текущей.
+    /// Проверяет последний релиз на GitHub. Обновление предлагается, если дата публикации
+    /// latest-релиза новее даты публикации релиза текущей версии.
     /// </summary>
     public async Task<UpdateInfo?> CheckForUpdateAsync(CancellationToken cancellationToken = default)
     {
-        var url = $"https://api.github.com/repos/{_repo}/releases/latest";
-        using var response = await _httpClient.GetAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
-
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        var release = JsonSerializer.Deserialize<GitHubRelease>(json);
-
-        if (release == null || string.IsNullOrWhiteSpace(release.TagName))
+        var latestRelease = await GetLatestReleaseAsync(cancellationToken);
+        if (latestRelease == null || !IsPublishableRelease(latestRelease))
             return null;
 
-        if (release.Draft || release.Prerelease)
+        var currentTag = NormalizeTag($"v{AppVersion.Current}");
+        var latestTag = NormalizeTag(latestRelease.TagName);
+        if (TagsEqual(latestTag, currentTag))
             return null;
 
-        var latestVersion = ParseVersion(release.TagName);
-        if (latestVersion == null)
+        var latestPublishedAt = ParsePublishedAt(latestRelease.PublishedAt);
+        if (latestPublishedAt == null)
             return null;
 
-        if (latestVersion <= GetCurrentVersion())
-            return null;
+        var currentRelease = await GetReleaseByTagAsync(currentTag, cancellationToken);
+        if (currentRelease == null)
+            return CreateUpdateInfo(latestRelease);
 
-        var asset = release.Assets?.FirstOrDefault(a =>
-            a.Name != null &&
-            a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) &&
-            a.Name.Contains("win-x64", StringComparison.OrdinalIgnoreCase));
+        var currentPublishedAt = ParsePublishedAt(currentRelease.PublishedAt);
+        if (currentPublishedAt == null)
+            return CreateUpdateInfo(latestRelease);
 
-        asset ??= release.Assets?.FirstOrDefault(a =>
-            a.Name != null && a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+        if (latestPublishedAt > currentPublishedAt)
+            return CreateUpdateInfo(latestRelease);
 
-        if (asset?.BrowserDownloadUrl == null)
-            return null;
-
-        return new UpdateInfo
-        {
-            Version = latestVersion,
-            TagName = release.TagName,
-            DownloadUrl = asset.BrowserDownloadUrl,
-            Notes = release.Body ?? "",
-            HtmlUrl = release.HtmlUrl ?? ""
-        };
+        return null;
     }
 
     /// <summary>
@@ -148,8 +136,6 @@ public class UpdateService : IDisposable
         var script = BuildUpdaterScript(pid, extractDir, appDir, exePath, updateRoot);
         File.WriteAllText(scriptPath, script, new UTF8Encoding(false));
 
-        // UseShellExecute=true запускает процесс полностью независимо от текущего,
-        // чтобы он пережил завершение приложения. Окно скрыто.
         var startInfo = new ProcessStartInfo
         {
             FileName = scriptPath,
@@ -160,6 +146,82 @@ public class UpdateService : IDisposable
 
         Process.Start(startInfo);
     }
+
+    private async Task<GitHubRelease?> GetLatestReleaseAsync(CancellationToken cancellationToken)
+    {
+        var url = $"https://api.github.com/repos/{_repo}/releases/latest";
+        return await FetchReleaseAsync(url, cancellationToken);
+    }
+
+    private async Task<GitHubRelease?> GetReleaseByTagAsync(string tag, CancellationToken cancellationToken)
+    {
+        var url = $"https://api.github.com/repos/{_repo}/releases/tags/{Uri.EscapeDataString(tag)}";
+        return await FetchReleaseAsync(url, cancellationToken, notFoundIsOk: true);
+    }
+
+    private async Task<GitHubRelease?> FetchReleaseAsync(
+        string url,
+        CancellationToken cancellationToken,
+        bool notFoundIsOk = false)
+    {
+        using var response = await _httpClient.GetAsync(url, cancellationToken);
+        if (notFoundIsOk && response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        return JsonSerializer.Deserialize<GitHubRelease>(json);
+    }
+
+    private UpdateInfo? CreateUpdateInfo(GitHubRelease release)
+    {
+        var version = ParseVersion(release.TagName ?? string.Empty);
+        if (version == null)
+            return null;
+
+        var asset = release.Assets?.FirstOrDefault(a =>
+            a.Name != null &&
+            a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) &&
+            a.Name.Contains("win-x64", StringComparison.OrdinalIgnoreCase));
+
+        asset ??= release.Assets?.FirstOrDefault(a =>
+            a.Name != null && a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+
+        if (asset?.BrowserDownloadUrl == null)
+            return null;
+
+        return new UpdateInfo
+        {
+            Version = version,
+            TagName = release.TagName ?? "",
+            DownloadUrl = asset.BrowserDownloadUrl,
+            Notes = release.Body ?? "",
+            HtmlUrl = release.HtmlUrl ?? ""
+        };
+    }
+
+    private static bool IsPublishableRelease(GitHubRelease release) =>
+        !release.Draft
+        && !release.Prerelease
+        && !string.IsNullOrWhiteSpace(release.TagName);
+
+    private static DateTimeOffset? ParsePublishedAt(string? value) =>
+        DateTimeOffset.TryParse(value, out var parsed) ? parsed : null;
+
+    private static string NormalizeTag(string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag))
+            return string.Empty;
+
+        var trimmed = tag.Trim();
+        return trimmed.StartsWith('v') || trimmed.StartsWith('V')
+            ? $"v{trimmed[1..]}"
+            : $"v{trimmed}";
+    }
+
+    private static bool TagsEqual(string left, string right) =>
+        string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 
     private static string BuildUpdaterScript(int pid, string extractDir, string appDir, string exePath, string updateRoot)
     {
@@ -172,7 +234,6 @@ public class UpdateService : IDisposable
         sb.AppendLine($"set \"LOG={logPath}\"");
         sb.AppendLine("echo [%date% %time%] Updater started > \"%LOG%\"");
 
-        // Ждём завершения текущего процесса приложения.
         sb.AppendLine("set /a WAITED=0");
         sb.AppendLine(":waitloop");
         sb.AppendLine($"tasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul");
@@ -182,16 +243,13 @@ public class UpdateService : IDisposable
         sb.AppendLine("  if %WAITED% lss 30 goto waitloop");
         sb.AppendLine(")");
 
-        // Небольшая задержка, чтобы ОС освободила файловые блокировки.
         sb.AppendLine("timeout /t 2 /nobreak >nul");
         sb.AppendLine($"echo [%date% %time%] Copying files to \"{appDir}\" >> \"%LOG%\"");
 
-        // robocopy: /R:5 /W:2 — повторы при заблокированных файлах.
         sb.AppendLine($"robocopy \"{extractDir}\" \"{appDir}\" /E /IS /IT /R:5 /W:2 /NP >> \"%LOG%\" 2>&1");
         sb.AppendLine("set \"RC=%ERRORLEVEL%\"");
         sb.AppendLine($"echo [%date% %time%] robocopy exit code %RC% >> \"%LOG%\"");
 
-        // robocopy: коды 0-7 — успех, 8+ — ошибка.
         sb.AppendLine("if %RC% GEQ 8 (");
         sb.AppendLine($"  echo [%date% %time%] Copy failed, aborting restart >> \"%LOG%\"");
         sb.AppendLine("  goto cleanup");
@@ -208,8 +266,6 @@ public class UpdateService : IDisposable
 
     private static string GetUpdateRoot() =>
         Path.Combine(Path.GetTempPath(), "customSTT-update");
-
-    private static Version GetCurrentVersion() => ParseVersion(AppVersion.Current) ?? new Version(0, 0, 0);
 
     private static Version? ParseVersion(string raw)
     {
@@ -234,6 +290,9 @@ public class UpdateService : IDisposable
     {
         [JsonPropertyName("tag_name")]
         public string? TagName { get; set; }
+
+        [JsonPropertyName("published_at")]
+        public string? PublishedAt { get; set; }
 
         [JsonPropertyName("body")]
         public string? Body { get; set; }
