@@ -36,7 +36,6 @@ public partial class App : Application
     {
         StartupOptions.Parse(e.Args);
 
-        _overlayService.Initialize();
         _trayIconService.Initialize();
 
         var mainWindow = new MainWindow(

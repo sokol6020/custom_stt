@@ -16,7 +16,7 @@ public static class OverlayLayoutHelper
 
     public static IReadOnlyList<OverlayScreenInfo> GetScreens()
     {
-        var screens = Screen.AllScreens;
+        var screens = GetOrderedScreens();
         if (screens.Length == 0)
         {
             return new[]
@@ -35,7 +35,7 @@ public static class OverlayLayoutHelper
 
     public static Rect GetWorkArea(int screenIndex)
     {
-        var screens = Screen.AllScreens;
+        var screens = GetOrderedScreens();
         if (screens.Length == 0)
             return SystemParameters.WorkArea;
 
@@ -60,18 +60,52 @@ public static class OverlayLayoutHelper
         };
     }
 
+    private static Screen[] GetOrderedScreens()
+    {
+        var screens = Screen.AllScreens;
+        if (screens.Length == 0)
+            return Array.Empty<Screen>();
+
+        return screens
+            .GroupBy(screen => screen.DeviceName, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderByDescending(screen => screen.Primary)
+            .ThenBy(screen => screen.Bounds.X)
+            .ThenBy(screen => screen.Bounds.Y)
+            .ThenBy(screen => screen.DeviceName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     private static string FormatScreenName(Screen screen, int index)
     {
-        var primary = screen.Primary ? ", основной" : string.Empty;
         var bounds = screen.Bounds;
-        return $"Дисплей {index + 1}{primary} ({bounds.Width}×{bounds.Height})";
+        var primary = screen.Primary ? ", основной" : string.Empty;
+        var device = MonitorNameResolver.Resolve(screen);
+        return $"Дисплей {index + 1}{primary} — {bounds.Width}×{bounds.Height} ({device})";
     }
 
     private static Matrix GetTransformFromDevice()
     {
-        var source = PresentationSource.FromVisual(System.Windows.Application.Current.MainWindow);
-        if (source?.CompositionTarget != null)
-            return source.CompositionTarget.TransformFromDevice;
+        var app = System.Windows.Application.Current;
+        if (app == null)
+            return Matrix.Identity;
+
+        if (app.MainWindow is { IsLoaded: true } mainWindow)
+        {
+            var source = PresentationSource.FromVisual(mainWindow);
+            if (source?.CompositionTarget != null)
+                return source.CompositionTarget.TransformFromDevice;
+        }
+
+        foreach (Window window in app.Windows)
+        {
+            if (!window.IsLoaded)
+                continue;
+
+            var source = PresentationSource.FromVisual(window);
+            if (source?.CompositionTarget != null)
+                return source.CompositionTarget.TransformFromDevice;
+        }
 
         return Matrix.Identity;
     }

@@ -228,7 +228,10 @@ public partial class MainViewModel : ObservableObject
         Settings.HotkeyMode = value == 1 ? "hold" : "toggle";
         OnPropertyChanged(nameof(IsHotkeyHoldMode));
         OnPropertyChanged(nameof(HotkeyHintText));
-        if (!_isLoadingSettings && _hotkeysReady)
+        if (_isLoadingSettings)
+            return;
+
+        if (_hotkeysReady)
             ApplyRecordingHotkeyMode();
         SaveSettings();
     }
@@ -346,10 +349,16 @@ public partial class MainViewModel : ObservableObject
     {
         if (value >= 0 && value < SupportedLanguages.Length)
             SelectedLanguage = SupportedLanguages[value];
-        SaveSettings();
+
+        if (!_isLoadingSettings)
+            SaveSettings();
     }
 
-    partial void OnSelectedAudioDeviceChanged(string? value) => SaveSettings();
+    partial void OnSelectedAudioDeviceChanged(string? value)
+    {
+        if (!_isLoadingSettings)
+            SaveSettings();
+    }
 
     partial void OnIsOverlayVisibleChanged(bool value)
     {
@@ -428,7 +437,8 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnMinimizedToTrayChanged(bool value)
     {
-        SaveSettings();
+        if (!_isLoadingSettings)
+            SaveSettings();
     }
 
     partial void OnMinimizeToTrayOnStartupChanged(bool value)
@@ -446,7 +456,8 @@ public partial class MainViewModel : ObservableObject
             }
         }
 
-        SaveSettings();
+        if (!_isLoadingSettings)
+            SaveSettings();
     }
 
     partial void OnCheckUpdatesOnStartupChanged(bool value)
@@ -459,18 +470,23 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnUseGpuChanged(bool value)
     {
+        if (_isLoadingSettings)
+            return;
+
         SaveSettings();
         _ = _speechRecognitionService.LoadModelAsync(SelectedModel, SelectedLanguage, value);
     }
 
     partial void OnHistoryLimitChanged(int value)
     {
-        SaveSettings();
+        if (!_isLoadingSettings)
+            SaveSettings();
     }
 
     partial void OnOutputFormatChanged(string value)
     {
-        SaveSettings();
+        if (!_isLoadingSettings)
+            SaveSettings();
     }
 
     partial void OnOverlayOpacityChanged(double value)
@@ -502,6 +518,9 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnOverlayHotkeyChanged(string value)
     {
+        if (_isLoadingSettings)
+            return;
+
         SaveSettings();
         if (!string.IsNullOrEmpty(value) && IsValidHotkey(value))
             ApplyRecordingHotkeyMode();
@@ -711,6 +730,22 @@ public partial class MainViewModel : ObservableObject
         UpdateOverlayState();
 
         _ = _speechRecognitionService.LoadModelAsync(SelectedModel, SelectedLanguage, UseGpu);
+    }
+
+    public void ApplyOverlayAfterStartup()
+    {
+        RefreshOverlayScreens();
+        OverlayScreenIndex = ClampOverlayScreenIndex(OverlayScreenIndex);
+        ApplyOverlayLayout();
+        ApplyOverlayVisibility(IsOverlayVisible);
+        UpdateOverlayPanelStatus();
+        UpdateOverlayState();
+    }
+
+    public async Task ScheduleDeferredOverlayRefreshAsync()
+    {
+        await Task.Delay(2000).ConfigureAwait(true);
+        ApplyOverlayAfterStartup();
     }
 
     public void ScheduleStartupUpdateCheck()
@@ -1191,7 +1226,7 @@ public partial class MainViewModel : ObservableObject
             {
                 hotkey = "Ctrl+Alt+A";
                 Settings.Hotkey = hotkey;
-                SaveSettings();
+                _settingsService.Save(Settings);
             }
 
             SelectedModel = Settings.Model ?? "base";
@@ -1211,14 +1246,13 @@ public partial class MainViewModel : ObservableObject
             OverlayOpacity = NormalizeOverlayOpacity(Settings.OverlayOpacity);
             OverlayCornerIndex = OverlayCornerExtensions.FromStorageId(Settings.OverlayCorner).ToIndex();
             OverlayScreenIndex = ClampOverlayScreenIndex(Settings.OverlayScreenIndex);
+            IsOverlayVisible = Settings.IsOverlayVisible;
             OverlayHotkey = NormalizeOverlayHotkey(Settings.OverlayHotkey);
             if (Settings.OverlayHotkey != OverlayHotkey)
             {
                 Settings.OverlayHotkey = OverlayHotkey;
-                SaveSettings();
+                _settingsService.Save(Settings);
             }
-
-            IsOverlayVisible = Settings.IsOverlayVisible;
 
             EditorProviderIndex = EditorProviderExtensions.FromStorageId(Settings.EditorProvider).ToIndex();
             EditorPort = NormalizeEditorPort(Settings.EditorPort);

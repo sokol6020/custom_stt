@@ -71,6 +71,9 @@ public partial class MainWindow : Window
         if (StartupOptions.MinimizeToTrayOnStartup || _viewModel.MinimizeToTrayOnStartup)
             _trayIconService.Minimize();
 
+        _viewModel.ApplyOverlayAfterStartup();
+        _ = _viewModel.ScheduleDeferredOverlayRefreshAsync();
+
         _viewModel.ScheduleStartupUpdateCheck();
     }
 
