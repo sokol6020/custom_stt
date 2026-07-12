@@ -71,6 +71,8 @@ public partial class MainViewModel : ObservableObject
     private string _hotkeyDisplay = "Ctrl+Alt+A";
 
     private bool _isLoadingSettings;
+    private bool _isRestoringOverlaySettings;
+    private bool _suppressBehaviorSideEffects;
     private bool _hotkeysReady;
     private bool _suppressModelChange;
     private bool _suppressAutoStartChange;
@@ -238,6 +240,9 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnDictationOnPauseChanged(bool value)
     {
+        if (_suppressBehaviorSideEffects)
+            return;
+
         if (!_isLoadingSettings)
             SaveSettings();
     }
@@ -362,7 +367,7 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnIsOverlayVisibleChanged(bool value)
     {
-        if (_isLoadingSettings)
+        if (_isLoadingSettings || _isRestoringOverlaySettings)
             return;
 
         if (value)
@@ -412,7 +417,7 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnAutoStartChanged(bool value)
     {
-        if (_suppressAutoStartChange)
+        if (_suppressAutoStartChange || _suppressBehaviorSideEffects)
             return;
 
         if (!_isLoadingSettings)
@@ -432,18 +437,22 @@ public partial class MainViewModel : ObservableObject
             }
         }
 
-        SaveSettings();
+        if (!_isLoadingSettings)
+            SaveSettings();
     }
 
     partial void OnMinimizedToTrayChanged(bool value)
     {
+        if (_suppressBehaviorSideEffects)
+            return;
+
         if (!_isLoadingSettings)
             SaveSettings();
     }
 
     partial void OnMinimizeToTrayOnStartupChanged(bool value)
     {
-        if (!_isLoadingSettings && AutoStart)
+        if (!_isLoadingSettings && !_suppressBehaviorSideEffects && AutoStart)
         {
             try
             {
@@ -462,11 +471,19 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnCheckUpdatesOnStartupChanged(bool value)
     {
+        if (_suppressBehaviorSideEffects)
+            return;
+
         if (!_isLoadingSettings)
             SaveSettings();
     }
 
     public string AppVersionText => $"Версия {AppVersion.Current}";
+
+    public void PersistSettings()
+    {
+        SaveSettings();
+    }
 
     partial void OnUseGpuChanged(bool value)
     {
@@ -491,7 +508,7 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnOverlayOpacityChanged(double value)
     {
-        if (_isLoadingSettings)
+        if (_isLoadingSettings || _isRestoringOverlaySettings)
             return;
 
         ApplyOverlayLayout();
@@ -500,7 +517,7 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnOverlayCornerIndexChanged(int value)
     {
-        if (_isLoadingSettings)
+        if (_isLoadingSettings || _isRestoringOverlaySettings)
             return;
 
         ApplyOverlayLayout();
@@ -509,7 +526,7 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnOverlayScreenIndexChanged(int value)
     {
-        if (_isLoadingSettings)
+        if (_isLoadingSettings || _isRestoringOverlaySettings)
             return;
 
         ApplyOverlayLayout();
@@ -732,20 +749,37 @@ public partial class MainViewModel : ObservableObject
         _ = _speechRecognitionService.LoadModelAsync(SelectedModel, SelectedLanguage, UseGpu);
     }
 
+    public void ApplyBehaviorAfterStartup()
+    {
+        ApplyAutoStartFromSettings();
+    }
+
     public void ApplyOverlayAfterStartup()
     {
-        RefreshOverlayScreens();
-        OverlayScreenIndex = ClampOverlayScreenIndex(OverlayScreenIndex);
-        ApplyOverlayLayout();
-        ApplyOverlayVisibility(IsOverlayVisible);
-        UpdateOverlayPanelStatus();
-        UpdateOverlayState();
+        _isRestoringOverlaySettings = true;
+        try
+        {
+            var savedScreenIndex = OverlayScreenIndex;
+            RefreshOverlayScreens();
+            OverlayScreenIndex = Math.Max(0, savedScreenIndex);
+            ApplyOverlayLayout();
+            ApplyOverlayVisibility(IsOverlayVisible);
+            UpdateOverlayPanelStatus();
+            UpdateOverlayState();
+        }
+        finally
+        {
+            _isRestoringOverlaySettings = false;
+        }
     }
 
     public async Task ScheduleDeferredOverlayRefreshAsync()
     {
-        await Task.Delay(2000).ConfigureAwait(true);
-        ApplyOverlayAfterStartup();
+        foreach (var delayMs in new[] { 2000, 8000, 20000 })
+        {
+            await Task.Delay(delayMs).ConfigureAwait(true);
+            ApplyOverlayAfterStartup();
+        }
     }
 
     public void ScheduleStartupUpdateCheck()
@@ -1233,11 +1267,7 @@ public partial class MainViewModel : ObservableObject
             SelectedLanguage = Settings.Language ?? "auto";
             HotkeyDisplay = hotkey;
             HotkeyModeIndex = string.Equals(Settings.HotkeyMode, "hold", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
-            DictationOnPause = Settings.DictationOnPause;
-            AutoStart = Settings.AutoStart;
-            MinimizedToTray = Settings.MinimizedToTray;
-            MinimizeToTrayOnStartup = Settings.MinimizeToTrayOnStartup;
-            CheckUpdatesOnStartup = Settings.CheckUpdatesOnStartup;
+            LoadBehaviorSettings();
             UseGpu = Settings.UseGpu;
             HistoryLimit = Settings.HistoryLimit;
             OutputFormat = Settings.OutputFormat ?? "plainText";
@@ -1245,7 +1275,7 @@ public partial class MainViewModel : ObservableObject
 
             OverlayOpacity = NormalizeOverlayOpacity(Settings.OverlayOpacity);
             OverlayCornerIndex = OverlayCornerExtensions.FromStorageId(Settings.OverlayCorner).ToIndex();
-            OverlayScreenIndex = ClampOverlayScreenIndex(Settings.OverlayScreenIndex);
+            OverlayScreenIndex = Math.Max(0, Settings.OverlayScreenIndex);
             IsOverlayVisible = Settings.IsOverlayVisible;
             OverlayHotkey = NormalizeOverlayHotkey(Settings.OverlayHotkey);
             if (Settings.OverlayHotkey != OverlayHotkey)
@@ -1278,7 +1308,7 @@ public partial class MainViewModel : ObservableObject
 
             _transcriptionHistoryService.SetMaxHistoryItems(HistoryLimit);
             ApplyOverlayLayout();
-            ApplyAutoStartFromSettings();
+            ApplyBehaviorAfterStartup();
         }
         catch (Exception ex)
         {
@@ -1288,6 +1318,23 @@ public partial class MainViewModel : ObservableObject
         finally
         {
             _isLoadingSettings = false;
+        }
+    }
+
+    private void LoadBehaviorSettings()
+    {
+        _suppressBehaviorSideEffects = true;
+        try
+        {
+            DictationOnPause = Settings.DictationOnPause;
+            MinimizedToTray = Settings.MinimizedToTray;
+            MinimizeToTrayOnStartup = Settings.MinimizeToTrayOnStartup;
+            CheckUpdatesOnStartup = Settings.CheckUpdatesOnStartup;
+            AutoStart = Settings.AutoStart;
+        }
+        finally
+        {
+            _suppressBehaviorSideEffects = false;
         }
     }
 
@@ -1306,9 +1353,19 @@ public partial class MainViewModel : ObservableObject
     private void RefreshOverlayScreens()
     {
         var screens = OverlayLayoutHelper.GetScreens();
+        var names = screens.Select(screen => screen.DisplayName).ToList();
+        if (names.Count == 0)
+            names.Add("Дисплей 1");
+
+        if (_availableScreens.Count == names.Count
+            && _availableScreens.Zip(names).All(pair => pair.First == pair.Second))
+        {
+            return;
+        }
+
         _availableScreens.Clear();
-        foreach (var screen in screens)
-            _availableScreens.Add(screen.DisplayName);
+        foreach (var name in names)
+            _availableScreens.Add(name);
 
         if (_availableScreens.Count == 0)
             _availableScreens.Add("Дисплей 1");
@@ -1333,7 +1390,8 @@ public partial class MainViewModel : ObservableObject
     private void ApplyOverlayLayout()
     {
         var corner = OverlayCornerExtensions.FromIndex(OverlayCornerIndex);
-        _overlayService.SetLayout(OverlayOpacity / 100.0, corner, OverlayScreenIndex);
+        var screenIndex = ClampOverlayScreenIndex(OverlayScreenIndex);
+        _overlayService.SetLayout(OverlayOpacity / 100.0, corner, screenIndex);
     }
 
     private static double NormalizeOverlayOpacity(double saved)
@@ -1415,6 +1473,9 @@ public partial class MainViewModel : ObservableObject
 
     private void SaveSettings()
     {
+        if (_isLoadingSettings)
+            return;
+
         try
         {
             Settings.Model = SelectedModel;
@@ -1485,6 +1546,8 @@ public partial class MainViewModel : ObservableObject
 
     private void ExitApp()
     {
+        PersistSettings();
+
         if (System.Windows.Application.Current.MainWindow is MainWindow mainWindow)
             mainWindow.PrepareExit();
 

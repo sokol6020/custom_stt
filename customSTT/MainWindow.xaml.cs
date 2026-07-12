@@ -4,6 +4,7 @@ using System.Windows.Interop;
 using customSTT.Models;
 using customSTT.Services;
 using customSTT.ViewModels;
+using Microsoft.Win32;
 
 namespace customSTT;
 
@@ -18,6 +19,8 @@ public partial class MainWindow : Window
     private bool _isExiting;
 
     public void PrepareExit() => _isExiting = true;
+
+    public void PersistSettingsOnExit() => _viewModel.PersistSettings();
 
     public IntPtr Handle => new WindowInteropHelper(this).Handle;
 
@@ -61,18 +64,31 @@ public partial class MainWindow : Window
         _hotkeyService.HotkeyDeactivated += OnHotkeyDeactivated;
         _hotkeyService.OverlayHotkeyActivated += OnOverlayHotkeyActivated;
         Closing += MainWindow_Closing;
+        Closed += MainWindow_Closed;
         Loaded += OnMainWindowLoaded;
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+    }
+
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(_viewModel.ApplyOverlayAfterStartup);
+    }
+
+    private void MainWindow_Closed(object? sender, EventArgs e)
+    {
+        SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
     }
 
     private void OnMainWindowLoaded(object? sender, RoutedEventArgs e)
     {
         Loaded -= OnMainWindowLoaded;
 
-        if (StartupOptions.MinimizeToTrayOnStartup || _viewModel.MinimizeToTrayOnStartup)
-            _trayIconService.Minimize();
-
+        _viewModel.ApplyBehaviorAfterStartup();
         _viewModel.ApplyOverlayAfterStartup();
         _ = _viewModel.ScheduleDeferredOverlayRefreshAsync();
+
+        if (StartupOptions.MinimizeToTrayOnStartup || _viewModel.MinimizeToTrayOnStartup)
+            _trayIconService.Minimize();
 
         _viewModel.ScheduleStartupUpdateCheck();
     }
@@ -155,10 +171,12 @@ public partial class MainWindow : Window
         if (_viewModel.MinimizedToTray && !_isExiting)
         {
             e.Cancel = true;
+            _viewModel.PersistSettings();
             _trayIconService.Minimize();
             return;
         }
 
+        _viewModel.PersistSettings();
         _overlayService.Hide();
         _hotkeyService.UnregisterHotkeys();
     }

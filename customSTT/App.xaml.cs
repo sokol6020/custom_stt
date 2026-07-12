@@ -57,6 +57,9 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        if (MainWindow is MainWindow mainWindow)
+            mainWindow.PersistSettingsOnExit();
+
         _hotkeyService.UnregisterHotkeys();
         _audioCaptureService.Dispose();
         _speechRecognitionService.Dispose();

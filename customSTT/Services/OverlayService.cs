@@ -262,6 +262,8 @@ public class OverlayService : IDisposable
             if (_overlayWindow == null || _isVisible)
                 return;
 
+            _overlayWindow.Opacity = _opacity;
+            PositionOverlayWindow();
             _overlayWindow.Show();
             _overlayWindow.Visibility = Visibility.Visible;
             _isVisible = true;
